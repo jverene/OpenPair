@@ -1,0 +1,35 @@
+{
+  "name": "openpair",
+  "version": "0.1.0",
+  "description": "Two agents. One vision. One executor. Every decision documented.",
+  "type": "module",
+  "bin": {
+    "openpair": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "commander": "^12.1.0",
+    "openai": "^4.77.0",
+    "picocolors": "^1.1.1",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/prompts": "^2.4.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
