@@ -38,3 +38,9 @@ _Agent: Executor. One entry per milestone, appended as work proceeds._
 - Smoke: `npm run build` clean; `node dist/cli.js --help` correct; `--mock` run in a scratch directory completed the full loop with visible handoffs and produced a correctly structured `.pair/` (verified `review.md` APPROVE entry and `execution.md` transcript).
 - Not run: real-provider and real-OpenCode smoke (requires the user's API keys and OpenCode install). The OpenCode paths are covered by mocked-spawn tests only.
 - `README.md` written (philosophy, install, domains, safety rails, dev commands).
+
+## [2026-08-17T04:59:21Z] Milestone: npm publish — renamed to scoped package
+
+- `npm publish` of `openpair` was rejected by the registry (E403): "Package name too similar to existing package openai" — typo-squatting protection, not a name-availability issue (`npm view openpair` had returned 404).
+- Resolution (npm's own suggestion): renamed to the scoped package `@jverene/openpair`, published with `--access=public`. Bin name stays `openpair`; usage becomes `npx @jverene/openpair`.
+- Updated `package.json` name, README install line, and the PRD's first-run snippet to match. Tombstone-worthy lesson: a 404 on `npm view` does not mean a name is publishable.

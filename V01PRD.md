@@ -39,7 +39,7 @@ The relationship between notes and artifacts is strict: the notes explain the ar
 First Run Experience
 The user types one command:
 plain
-npx openpair "Build a Stripe checkout with discount codes"
+npx @jverene/openpair "Build a Stripe checkout with discount codes"
 A setup wizard appears asking for the LLM provider (Ollama, OpenAI, Anthropic, or custom) and the domain (software, research, writing, or data). The user selects their preferences. Then the agents begin.
 The terminal shows live progress. Agent names are color-coded. The user sees the phase transitions: Intent, Plan, Execution, Review. When Agent B has a question, the terminal pauses and shows the question. Agent A answers. The loop continues.
 When the loop completes, the user has a directory full of working artifacts and a .pair/ directory full of notes explaining every decision. The user can read the notes, approve the work, or ask the agents to iterate.

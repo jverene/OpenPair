@@ -37,7 +37,7 @@ Code is cheap; context is expensive. Six months from now, `plannotes.md` answers
 ## Install and run
 
 ```bash
-npx openpair "Build a Stripe checkout with discount codes"
+npx @jverene/openpair "Build a Stripe checkout with discount codes"
 ```
 
 First run asks for your LLM provider (OpenAI, Anthropic, Ollama, or any OpenAI-compatible endpoint), model, API key, and domain (software, research, or writing). Config lives at `~/.openpair/config.json`; API keys may also come from the usual environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`), which take precedence.
