@@ -105,6 +105,9 @@ describe("runPairLoop", () => {
       expect(content).toMatch(/## \[\d{4}-\d{2}-\d{2}T/);
     }
     expect(await notes.read("review.md")).toContain("APPROVE");
+    // 1.3: the review reads ground truth — execution.md ends with a manifest.
+    const execution = await notes.read("execution.md");
+    expect(execution).toContain("Artifact manifest");
   });
 
   it("Q&A round-trip: question → Vision answers → Executor resumes", async () => {

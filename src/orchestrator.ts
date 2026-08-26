@@ -25,6 +25,7 @@ import type { Harness } from "./harness/types.js";
 import { VisionAgent } from "./agents/vision.js";
 import { ExecutorAgent } from "./agents/executor.js";
 import { Notes } from "./notes.js";
+import { renderManifest } from "./artifacts.js";
 import { UI } from "./ui.js";
 
 export const MAX_REVIEW_CYCLES = 3;
@@ -180,9 +181,16 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
 
     // Handoff: execution.md written → Vision is triggered to review.
     if (!(await notes.inputsChanged(vision.name, ["execution.md"]))) {
-      ui.system("Vision inputs unchanged since last read — skipping review invocation.");
+      ui.system("Vision inputs unchanged — skipping review invocation.");
       return { status: "needs_human", reason: "Loop stalled: no agent had new input.", reviewCycles };
     }
+
+    // Ground truth before the review: what actually exists in the working
+    // directory. The reviewer must verify work against this manifest, not
+    // against the executor's claims (benchmark finding 4c).
+    const manifest = await renderManifest(cwd);
+    await notes.append("execution.md", "Orchestrator", "Artifact manifest", manifest);
+    await notes.markRead(vision.name, ["execution.md"]);
 
     // Phase 3: Review (intent review, not code review).
     ui.phase("Phase 3: Review");

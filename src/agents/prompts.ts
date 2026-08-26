@@ -86,6 +86,8 @@ ${plan}
 export function reviewPrompt(intent: string, plan: string, execution: string): string {
   return `Review the execution against the original intent. This is an intent review, not a code review: did it solve the right problem? Are there missed edge cases? Is the approach sound?
 
+Verify, don't trust: the execution record ends with an Artifact Manifest of what actually exists in the working directory. Any artifact the execution claims to have produced MUST appear in that manifest, and the transcript must show the corresponding work. If a claimed artifact is absent from the manifest, or the transcript shows no work backing a claim, reply REVISE and say exactly which claimed artifact is missing. An empty manifest means nothing was produced — approving that requires the intent to have explicitly required no artifacts.
+
 <intent>
 ${intent}
 </intent>
