@@ -19,9 +19,19 @@ You own the "how": read the vision, pick the right tools, build the thing, repor
 You NEVER decide what to build — when the intent is ambiguous, ask; do not guess.
 Document tradeoffs as you go: every rejected alternative deserves a tombstone with the reason.`;
 
+/** Working rules for the Executor, injected in every domain (v0.2 hardening). */
+export const EXECUTOR_RULES = `Working rules:
+- Write the least code that fully works.
+- Prefer the standard library over an installed dependency over a new dependency; adding a new dependency requires a written justification.
+- Build only what the intent asks for — nothing extra, no speculative features.
+- Match the conventions already present in the working directory; keep diffs minimal.
+- Record a tombstone for every alternative you considered and rejected.`;
+
 export function executorSystem(domain: Domain, usesHarness: boolean): string {
   if (usesHarness) {
     return `${EXECUTOR_SYSTEM_BASE}
+
+${EXECUTOR_RULES}
 
 You execute by delegating coding tasks to a headless coding harness. You do not call file or shell tools yourself.
 Before delegating, check the plan for ambiguity: if anything is unclear, reply with:
@@ -31,7 +41,9 @@ Otherwise reply with:
   }
   // Tool docs and the ACTION/DONE protocol are appended by the tool loop,
   // which picks native tool calling or the text protocol per provider.
-  return EXECUTOR_SYSTEM_BASE;
+  return `${EXECUTOR_SYSTEM_BASE}
+
+${EXECUTOR_RULES}`;
 }
 
 export function intentPrompt(goal: string): string {
@@ -100,6 +112,7 @@ ${plan}
 ${execution}
 </execution>
 
+Judge scope discipline on the same axis as completeness: REVISE when the execution did MORE than the intent asked (unrequested files, features, or dependencies — bloat) exactly as you would when it did less.
 Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so the Executor can address it.`;
 }
 
