@@ -13,6 +13,8 @@ import type { Harness } from "../harness/types.js";
 import { toolsForDomain } from "../tools/registry.js";
 import { executorSystem, executePrompt, planPrompt } from "./prompts.js";
 import { parseDirective, runToolLoop } from "./toolLoop.js";
+import { COMPACTION_PROMPT } from "./prompts.js";
+import type { Transcript } from "../transcript.js";
 
 export interface PlanDoc {
   plan: string;
@@ -41,9 +43,16 @@ export class ExecutorAgent {
     private readonly domain: Domain,
     private readonly cwd: string,
     private readonly harness?: Harness,
+    private readonly transcript?: Transcript,
   ) {
     this.usesHarness = domain === "software" && harness !== undefined;
   }
+
+  /** Transcript sink for tool events; wired by the orchestrator (§2.1). */
+  private onToolEvent = (kind: "tool_call" | "tool_result", text: string): void => {
+    // The orchestrator stamps the actor; tool events are always the Executor's.
+    void this.transcript?.append("Executor", kind, text);
+  };
 
   async writePlan(intent: string, intentNotes: string, reviewFeedback?: string): Promise<PlanDoc> {
     // A new plan invalidates any in-flight execution conversation.
@@ -82,6 +91,7 @@ export class ExecutorAgent {
       system: executorSystem(this.domain, false),
       task: "",
       cwd: this.cwd,
+      onEvent: this.onToolEvent,
       messages: [
         ...this.lastOutcome.messages,
         { role: "user", content: `The Vision Holder answered your question: ${answer}\nContinue.` },
@@ -89,6 +99,40 @@ export class ExecutorAgent {
     });
     this.lastOutcome = outcome;
     return toExecuteOutcome(outcome);
+  }
+
+  /**
+   * Self-authored compaction at a yield boundary (§2.4). Called by the
+   * orchestrator when the executor's live conversation is near the context
+   * limit. Replaces older conversation with the agent's own summary and
+   * appends the compaction event to the shared transcript so the peer knows
+   * memory was lost. Returns the summary, or null when nothing to compact.
+   */
+  async maybeCompact(lastPromptTokens: number, contextLimit: number): Promise<string | null> {
+    if (!this.lastOutcome || this.lastOutcome.messages.length === 0) return null;
+    if (lastPromptTokens < contextLimit * 0.75) return null;
+    const system = executorSystem(this.domain, this.usesHarness);
+    const summary = (
+      await this.provider.chat([
+        { role: "system", content: system },
+        { role: "user", content: COMPACTION_PROMPT },
+      ])
+    ).trim();
+    const compacted = summary.replace(/^COMPACTED:?\s*/m, "").trim() || summary;
+    this.lastOutcome = {
+      ...this.lastOutcome,
+      messages: [
+        ...this.lastOutcome.messages.slice(0, 1), // keep the system prompt
+        {
+          role: "user",
+          content:
+            `MEMORY COMPACTION occurred. Your prior conversation was replaced by your own summary; ` +
+            `the shared transcript records the event. Resume from:\n\n${compacted}`,
+        },
+      ],
+    };
+    await this.transcript?.append("Orchestrator", "compaction", `Executor compacted at ~${Math.round((lastPromptTokens / contextLimit) * 100)}% of context. Summary:\n${compacted}`);
+    return compacted;
   }
 
   // ---- software domain: delegate to the harness -------------------------
@@ -162,6 +206,7 @@ export class ExecutorAgent {
       system: executorSystem(this.domain, false),
       task: executePrompt(plan, intent),
       cwd: this.cwd,
+      onEvent: this.onToolEvent,
       messages: this.lastOutcome?.messages,
     });
     this.lastOutcome = outcome;

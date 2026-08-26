@@ -9,6 +9,7 @@
 import type { ChatProvider } from "../providers/types.js";
 import { fallbackTools } from "../tools/registry.js";
 import { runToolLoop } from "../agents/toolLoop.js";
+import type { Transcript } from "../transcript.js";
 import type { Harness, HarnessResult } from "./types.js";
 
 const FALLBACK_SYSTEM = `You are the execution engine of a pair-programming system, running with basic file and shell tools.
@@ -18,9 +19,19 @@ export class FallbackHarness implements Harness {
   readonly name = "fallback";
 
   constructor(
-    private readonly provider: ChatProvider,
+    provider: ChatProvider,
     private readonly cwd: string,
-  ) {}
+    private readonly transcript?: Transcript,
+  ) {
+    this.provider = provider;
+  }
+
+  private provider: ChatProvider;
+
+  /** Orchestrator hook: run through the per-agent tracked provider (§2.4). */
+  setProvider(provider: ChatProvider): void {
+    this.provider = provider;
+  }
 
   async preflight(): Promise<HarnessResult> {
     return { ok: true, output: "Fallback harness: no external preflight required." };
@@ -34,6 +45,11 @@ export class FallbackHarness implements Harness {
       system: FALLBACK_SYSTEM,
       task: context ? `${context}\n\nTask:\n${task}` : task,
       cwd: this.cwd,
+      onEvent: this.transcript
+        ? (kind, text) => {
+            void this.transcript?.append("Executor", kind, text);
+          }
+        : undefined,
     });
     return {
       ok: outcome.status === "done",

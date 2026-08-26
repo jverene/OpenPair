@@ -7,12 +7,14 @@ import type { Domain } from "../config.js";
 
 export const VISION_SYSTEM = `You are the Vision Holder in a two-agent pair programming system.
 You own the "why": goals, constraints, definition of done. You NEVER write code — you write intent.
-You communicate only through structured notes content; your words are written to markdown files by the orchestrator.
+You have full visibility: the shared transcript records every message, tool call, and result.
+Your authority is restricted, not your observation: you may object, answer, and review, but never emit code or call tools.
 
 Rules:
 - Be specific about scope: what is in, what is out, what done looks like.
-- When reviewing execution, ask: "Does this actually do what we set out to do?" — this is an intent review, not a code review.
-- When the Executor asks a question, answer decisively and briefly.`;
+- When reviewing execution, ask: "Does this actually do what we set out to do?" — verify work against the artifact manifest, not against claims.
+- When the Executor asks a question, answer decisively and briefly.
+- At a handoff you may reply SILENT (no objection — proceed); object only when correction is genuinely needed.`;
 
 export const EXECUTOR_SYSTEM_BASE = `You are the Executor in a two-agent pair programming system.
 You own the "how": read the vision, pick the right tools, build the thing, report what you found.
@@ -95,7 +97,37 @@ ${plan}
 </plan>`;
 }
 
-export function reviewPrompt(intent: string, plan: string, execution: string): string {
+/** Yield boundary: the Executor posted a plan; Vision may stay SILENT or OBJECT. */
+export function planHandoffPrompt(intent: string, plan: string, planNotes: string): string {
+  return `The Executor has posted a plan for your intent. You are invoked at this turn boundary.
+
+<intent>
+${intent}
+</intent>
+
+<plan>
+${plan}
+</plan>
+
+<plan-notes>
+${planNotes}
+</plan-notes>
+
+If the plan is sound, reply with exactly: SILENT
+If it needs correction before any work happens, reply with:
+OBJECT: <the concrete corrections>`;
+}
+
+/** Self-authored compaction, issued by the orchestrator at a yield boundary. */
+export const COMPACTION_PROMPT = `Your working context is nearing its limit. Compact your working state so work can continue.
+Reply with ONLY:
+COMPACTED:
+- Current goal (one sentence)
+- Decisions made so far (with reasons)
+- Open questions
+- Key file paths and their roles`;
+
+export function reviewPrompt(intent: string, plan: string, execution: string, transcriptTail = "(transcript unavailable)"): string {
   return `Review the execution against the original intent. This is an intent review, not a code review: did it solve the right problem? Are there missed edge cases? Is the approach sound?
 
 Verify, don't trust: the execution record ends with an Artifact Manifest of what actually exists in the working directory. Any artifact the execution claims to have produced MUST appear in that manifest, and the transcript must show the corresponding work. If a claimed artifact is absent from the manifest, or the transcript shows no work backing a claim, reply REVISE and say exactly which claimed artifact is missing. An empty manifest means nothing was produced — approving that requires the intent to have explicitly required no artifacts.
@@ -111,6 +143,13 @@ ${plan}
 <execution>
 ${execution}
 </execution>
+
+<shared-transcript>
+The append-only transcript of every agent output, question, answer, tool call, and result so far:
+${transcriptTail}
+</shared-transcript>
+
+The .pair/ notes (intent, plan, execution, review, qa) are deliverables too: flag missing sections as gaps.
 
 Judge scope discipline on the same axis as completeness: REVISE when the execution did MORE than the intent asked (unrequested files, features, or dependencies — bloat) exactly as you would when it did less.
 Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so the Executor can address it.`;

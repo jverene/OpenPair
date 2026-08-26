@@ -84,6 +84,8 @@ export async function runToolLoop(opts: {
   maxTurns?: number;
   /** Prior conversation when resuming after a Q&A answer. */
   messages?: ChatMessage[];
+  /** Optional sink for transcript events (shared visibility, §2.1). */
+  onEvent?: (kind: "tool_call" | "tool_result", text: string) => void;
 }): Promise<ToolLoopOutcome> {
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   // Native tool calling when the provider supports it AND there are tools.
@@ -119,7 +121,10 @@ export async function runToolLoop(opts: {
       if (result.toolCalls && result.toolCalls.length > 0) {
         messages.push({ role: "assistant", content: result.content ?? "", toolCalls: result.toolCalls });
         for (const call of result.toolCalls) {
+          const callText = `${call.name}(${JSON.stringify(call.args)})`;
+          opts.onEvent?.("tool_call", callText);
           const result2 = await runTool(call.name, call.args, opts.tools, opts.cwd);
+          opts.onEvent?.("tool_result", result2.slice(0, 2_000));
           transcript.push(`ACTION ${call.name}(${JSON.stringify(call.args)})\n${result2}`);
           messages.push({ role: "tool", toolCallId: call.id, content: result2 });
         }
@@ -134,7 +139,10 @@ export async function runToolLoop(opts: {
     const directive = parseDirective(reply);
 
     if (directive.kind === "action") {
+      const callText = `${directive.tool}(${JSON.stringify(directive.args)})`;
+      opts.onEvent?.("tool_call", callText);
       const result = await runTool(directive.tool, directive.args, opts.tools, opts.cwd);
+      opts.onEvent?.("tool_result", result.slice(0, 2_000));
       transcript.push(`ACTION ${directive.tool}(${JSON.stringify(directive.args)})\n${result}`);
       messages.push({ role: "user", content: `RESULT:\n${result}` });
       continue;

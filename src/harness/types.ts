@@ -12,6 +12,8 @@ export interface HarnessResult {
   error?: string;
 }
 
+import type { ChatProvider } from "../providers/types.js";
+
 export interface Harness {
   readonly name: string;
   /**
@@ -21,4 +23,7 @@ export interface Harness {
    */
   preflight(): Promise<HarnessResult>;
   execute(task: string, context: string): Promise<HarnessResult>;
+  /** Optional: swap the LLM provider (used by the orchestrator to route
+   *  the fallback harness through the per-agent tracked provider, §2.4). */
+  setProvider?(provider: ChatProvider): void;
 }

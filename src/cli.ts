@@ -13,6 +13,7 @@ import { MockProvider, defaultMockScript } from "./providers/mock.js";
 import { createHarness } from "./harness/index.js";
 import type { Harness, HarnessResult } from "./harness/types.js";
 import { runPairLoop } from "./orchestrator.js";
+import { Transcript } from "./transcript.js";
 import { UI } from "./ui.js";
 import { runWizard } from "./wizard.js";
 
@@ -38,6 +39,8 @@ program
   .action(async (goal: string | undefined, opts: { mock?: boolean; reconfigure?: boolean }) => {
     const ui = new UI();
     const cwd = process.cwd();
+    const transcript = new Transcript(cwd);
+    await transcript.init();
 
     if (!goal) {
       program.help();
@@ -66,14 +69,14 @@ program
       provider = createProvider(config);
 
       if (config.domain === "software") {
-        const selected = await createHarness({ config, provider, cwd });
+        const selected = await createHarness({ config, provider, cwd, transcript });
         harness = selected.harness;
         if (selected.notice) ui.system(selected.notice);
       }
     }
 
     ui.system(`Provider: ${provider.name} · Model: ${config.model} · Domain: ${config.domain}`);
-    const result = await runPairLoop({ goal, config, provider, cwd, ui, harness });
+    const result = await runPairLoop({ goal, config, provider, cwd, ui, harness, transcript });
 
     if (result.status === "approved") {
       process.exitCode = 0;
