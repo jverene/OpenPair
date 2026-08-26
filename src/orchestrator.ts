@@ -154,6 +154,13 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
       outcome = await executor.resumeWithAnswer(answer);
     }
 
+    if (outcome.status === "protocol_failure") {
+      // The executor could not speak the tool protocol; halting beats a fabricated DONE.
+      await notes.append("execution.md", executor.name, "Execution halted: protocol failure", outcome.text);
+      ui.executor("Halted: protocol failure. Wrote the last reply and diagnosis to execution.md.");
+      return { status: "halted", reason: outcome.text, reviewCycles };
+    }
+
     if (outcome.status === "halt") {
       // e.g. harness preflight failed — error + troubleshooting go to execution.md.
       await notes.append("execution.md", executor.name, "Execution halted", outcome.text);

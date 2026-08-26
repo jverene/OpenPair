@@ -205,3 +205,25 @@ describe("runPairLoop", () => {
     expect(execution).toContain("API key"); // actionable troubleshooting
   });
 });
+
+describe("runPairLoop — protocol failure halts honestly (1.2)", () => {
+  it("halts and records execution.md when the executor never speaks the protocol", async () => {
+    const rambler: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\\n");
+      if (system.includes("You are the Vision Holder")) {
+        return user.includes("Review the execution") ? "APPROVE\\n\\nfine." : INTENT_REPLY;
+      }
+      if (user.includes("Write your plan")) {
+        return "PLAN:\\nPlan v1.\\n\\nPLAN NOTES:\\nn/a";
+      }
+      return "The script must have failed. Let me check the error output.";
+    };
+    const result = await run(rambler);
+    expect(result.status).toBe("halted");
+    expect(result.reason).toContain("Protocol failure");
+    const execution = await new Notes(cwd).read("execution.md");
+    expect(execution).toContain("protocol failure");
+    expect(execution).toContain("The script must have failed");
+  });
+});

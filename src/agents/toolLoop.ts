@@ -21,7 +21,7 @@
 import type { ChatMessage, ChatProvider, ChatToolDef } from "../providers/types.js";
 import type { Tool } from "../tools/registry.js";
 
-export type ToolLoopStatus = "done" | "question" | "max_turns";
+export type ToolLoopStatus = "done" | "question" | "max_turns" | "protocol_failure";
 
 export interface ToolLoopUsage {
   promptTokens: number;
@@ -159,7 +159,20 @@ export async function runToolLoop(opts: {
       });
       continue;
     }
-    return withUsage({ status: "done", text: reply, transcript, messages }, usage);
+    // NO SILENT ACCEPT: a reply that still carries no usable directive is a
+    // protocol failure, not a DONE. Fabricating completion here let whole
+    // runs "finish" with zero work in the field. Halt and surface it.
+    return withUsage(
+      {
+        status: "protocol_failure",
+        text:
+          `Protocol failure: no usable directive after ${nudges} nudges. ` +
+          `The run stops rather than fabricating a DONE. Last reply:\n${reply}`,
+        transcript,
+        messages,
+      },
+      usage,
+    );
   }
 
   return withUsage(

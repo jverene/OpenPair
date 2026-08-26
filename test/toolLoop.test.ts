@@ -166,7 +166,7 @@ describe("runToolLoop — text fallback still works", () => {
     expect(written).toBe("multiline ok");
   });
 
-  it("accepts a non-directive reply after exhausting nudges (v0.1 behavior, changed in 1.2)", async () => {
+  it("halts with protocol_failure after exhausting nudges — never fabricates DONE", async () => {
     let calls = 0;
     const rambler: ChatProvider = {
       name: "text-mock",
@@ -177,7 +177,8 @@ describe("runToolLoop — text fallback still works", () => {
     };
     const outcome = await runToolLoop({ provider: rambler, tools: [writeTool], system: "s", task: "t", cwd });
     expect(calls).toBe(3); // initial + 2 nudges
-    expect(outcome.status).toBe("done"); // NOTE: 1.2 changes this to protocol_failure
+    expect(outcome.status).toBe("protocol_failure");
+    expect(outcome.text).toContain("Protocol failure");
     expect(outcome.text).toContain("The script must have failed");
   });
 });

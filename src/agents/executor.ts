@@ -19,7 +19,7 @@ export interface PlanDoc {
   planNotes: string;
 }
 
-export type ExecuteStatus = "done" | "question" | "halt" | "max_turns";
+export type ExecuteStatus = "done" | "question" | "halt" | "max_turns" | "protocol_failure";
 
 export interface ExecuteOutcome {
   status: ExecuteStatus;
