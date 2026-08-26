@@ -4,8 +4,6 @@
  * explicitly out of v0.1 scope (see V01PRD.md "What Is Not In v0.1").
  */
 import type { Domain } from "../config.js";
-import { renderToolDocs } from "./toolLoop.js";
-import type { Tool } from "../tools/registry.js";
 
 export const VISION_SYSTEM = `You are the Vision Holder in a two-agent pair programming system.
 You own the "why": goals, constraints, definition of done. You NEVER write code — you write intent.
@@ -21,7 +19,7 @@ You own the "how": read the vision, pick the right tools, build the thing, repor
 You NEVER decide what to build — when the intent is ambiguous, ask; do not guess.
 Document tradeoffs as you go: every rejected alternative deserves a tombstone with the reason.`;
 
-export function executorSystem(domain: Domain, tools: Tool[], usesHarness: boolean): string {
+export function executorSystem(domain: Domain, usesHarness: boolean): string {
   if (usesHarness) {
     return `${EXECUTOR_SYSTEM_BASE}
 
@@ -31,14 +29,9 @@ Before delegating, check the plan for ambiguity: if anything is unclear, reply w
 Otherwise reply with:
   READY: <the exact task briefing for the harness>`;
   }
-  return `${EXECUTOR_SYSTEM_BASE}
-
-You work autonomously inside the working directory using tools. Reply with exactly one directive on the first line:
-  ACTION: {"tool": "<name>", "args": {...}}   — call a tool; you will receive RESULT: <output>
-  QUESTION: <question for the Vision Holder>   — when the intent is ambiguous; then stop
-  DONE: <summary of what was done, findings, blockers>   — when finished
-Available tools:
-${renderToolDocs(tools)}`;
+  // Tool docs and the ACTION/DONE protocol are appended by the tool loop,
+  // which picks native tool calling or the text protocol per provider.
+  return EXECUTOR_SYSTEM_BASE;
 }
 
 export function intentPrompt(goal: string): string {

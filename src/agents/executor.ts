@@ -79,7 +79,7 @@ export class ExecutorAgent {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: executorSystem(this.domain, tools, false),
+      system: executorSystem(this.domain, false),
       task: "",
       cwd: this.cwd,
       messages: [
@@ -95,7 +95,7 @@ export class ExecutorAgent {
 
   private async executeViaHarness(plan: string, intent: string): Promise<ExecuteOutcome> {
     this.messages = [
-      { role: "system", content: executorSystem(this.domain, [], true) },
+      { role: "system", content: executorSystem(this.domain, true) },
       { role: "user", content: executePrompt(plan, intent) },
     ];
     return this.continueHarness(plan, intent);
@@ -159,7 +159,7 @@ export class ExecutorAgent {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: executorSystem(this.domain, tools, false),
+      system: executorSystem(this.domain, false),
       task: executePrompt(plan, intent),
       cwd: this.cwd,
       messages: this.lastOutcome?.messages,

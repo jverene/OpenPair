@@ -8,15 +8,11 @@
  */
 import type { ChatProvider } from "../providers/types.js";
 import { fallbackTools } from "../tools/registry.js";
-import { renderToolDocs, runToolLoop } from "../agents/toolLoop.js";
+import { runToolLoop } from "../agents/toolLoop.js";
 import type { Harness, HarnessResult } from "./types.js";
 
 const FALLBACK_SYSTEM = `You are the execution engine of a pair-programming system, running with basic file and shell tools.
-Work autonomously inside the working directory. Use tools via directives on the first line of your reply:
-  ACTION: {"tool": "<name>", "args": {...}}
-When the task is fully complete, reply: DONE: <summary of what you did>.
-Available tools:
-{TOOLS}`;
+Work autonomously inside the working directory.`;
 
 export class FallbackHarness implements Harness {
   readonly name = "fallback";
@@ -35,7 +31,7 @@ export class FallbackHarness implements Harness {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: FALLBACK_SYSTEM.replace("{TOOLS}", renderToolDocs(tools)),
+      system: FALLBACK_SYSTEM,
       task: context ? `${context}\n\nTask:\n${task}` : task,
       cwd: this.cwd,
     });
