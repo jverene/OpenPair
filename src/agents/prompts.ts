@@ -151,6 +151,8 @@ ${transcriptTail}
 
 The .pair/ notes (intent, plan, execution, review, qa) are deliverables too: flag missing sections as gaps.
 
+If the execution record notes it stopped at the turn cap, judge the PARTIAL work as such: credit everything that exists (verified against the manifest), and REVISE only if the intent's required outcomes are missing — not merely because the run was capped.
+
 Judge scope discipline on the same axis as completeness: REVISE when the execution did MORE than the intent asked (unrequested files, features, or dependencies — bloat) exactly as you would when it did less.
 Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so the Executor can address it.`;
 }

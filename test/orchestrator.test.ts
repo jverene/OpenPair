@@ -230,3 +230,41 @@ describe("runPairLoop — protocol failure halts honestly (1.2)", () => {
     expect(execution).toContain("The script must have failed");
   });
 });
+
+describe("runPairLoop — capped harness work flows to review (pre-step)", () => {
+  it("max_turns harness outcome reaches Vision review as partial work", async () => {
+    const capped = new (class implements Harness {
+      readonly name = "capped-stub";
+      async preflight(): Promise<HarnessResult> {
+        return { ok: true, output: "{}" };
+      }
+      async execute(): Promise<HarnessResult> {
+        return { ok: true, output: "(partial work: file written)", capped: true };
+      }
+    })();
+    let reviewed = false;
+    const withReview: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("Review the execution")) {
+          reviewed = true;
+          return "APPROVE\n\npartial work verified against the manifest.";
+        }
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT_REPLY;
+      }
+      if (user.includes("Write your plan")) return "PLAN:\nPlan v1.\n\nPLAN NOTES:\nn/a";
+      return "READY: build the thing";
+    };
+    const result = await run(withReview, {
+      harness: capped,
+      config: { ...config, domain: "software" },
+    });
+    expect(reviewed).toBe(true);
+    expect(result.status).toBe("approved");
+    const execution = await new Notes(cwd).read("execution.md");
+    expect(execution).toContain("stopped at the turn cap");
+    expect(execution).toContain("Artifact manifest");
+  });
+});

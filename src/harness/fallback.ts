@@ -15,6 +15,11 @@ import type { Harness, HarnessResult } from "./types.js";
 const FALLBACK_SYSTEM = `You are the execution engine of a pair-programming system, running with basic file and shell tools.
 Work autonomously inside the working directory.`;
 
+/** Turn budget for the fallback tool loop. Generous: the deadlock this
+ *  replaced (15 turns spent, work done, run halted) came from verification
+ *  steps after completion, not from real work. */
+const FALLBACK_MAX_TURNS = 25;
+
 export class FallbackHarness implements Harness {
   readonly name = "fallback";
 
@@ -45,16 +50,23 @@ export class FallbackHarness implements Harness {
       system: FALLBACK_SYSTEM,
       task: context ? `${context}\n\nTask:\n${task}` : task,
       cwd: this.cwd,
+      maxTurns: FALLBACK_MAX_TURNS,
       onEvent: this.transcript
         ? (kind, text) => {
             void this.transcript?.append("Executor", kind, text);
           }
         : undefined,
     });
-    return {
-      ok: outcome.status === "done",
-      output: [...outcome.transcript, outcome.text].join("\n\n"),
-      error: outcome.status === "done" ? undefined : `Fallback harness ended with status: ${outcome.status}`,
-    };
+    const output = [...outcome.transcript, outcome.text].join("\n\n");
+    if (outcome.status === "done") {
+      return { ok: true, output };
+    }
+    if (outcome.status === "max_turns") {
+      // Partial work, not a failure: flow to review, which judges the
+      // turn-capped run against the artifact manifest.
+      return { ok: true, output, capped: true };
+    }
+    // protocol_failure (and anything else) is a genuine failure -> halt.
+    return { ok: false, output, error: `Fallback harness ended with status: ${outcome.status}` };
   }
 }

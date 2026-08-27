@@ -95,3 +95,42 @@ describe("createHarness", () => {
     expect(pre.ok).toBe(true);
   });
 });
+
+describe("FallbackHarness max_turns fix", () => {
+  it("returns ok+capped (not a failure) when the tool loop hits the turn cap", async () => {
+    // A provider that never emits a directive: nudges exhaust -> protocol_failure
+    // would be a failure; instead use a valid ACTION forever to hit max_turns.
+    let calls = 0;
+    const looper: import("../src/providers/types.js").ChatProvider = {
+      name: "loop",
+      chat: async () => {
+        calls++;
+        return calls % 3 === 0
+          ? "DONE: finished after checking everything exhaustively."
+          : 'ACTION: {"tool": "list_dir", "args": {"path": "."}}';
+      },
+    };
+    // All ACTION, never DONE: hit the cap.
+    const endless: import("../src/providers/types.js").ChatProvider = {
+      name: "endless",
+      chat: async () => 'ACTION: {"tool": "list_dir", "args": {"path": "."}}',
+    };
+    void looper;
+    const harness = new FallbackHarness(endless, "/tmp");
+    const result = await harness.execute("do the thing", "");
+    expect(result.ok).toBe(true);
+    expect(result.capped).toBe(true);
+    expect(result.output.length).toBeGreaterThan(0);
+  });
+
+  it("still fails hard on protocol_failure", async () => {
+    const rambler: import("../src/providers/types.js").ChatProvider = {
+      name: "rambler",
+      chat: async () => "The script must have failed. Let me check.",
+    };
+    const harness = new FallbackHarness(rambler, "/tmp");
+    const result = await harness.execute("do the thing", "");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("protocol_failure");
+  });
+});

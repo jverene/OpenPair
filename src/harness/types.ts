@@ -10,6 +10,9 @@ export interface HarnessResult {
   output: string;
   /** Actionable troubleshooting text when ok is false. */
   error?: string;
+  /** True when work stopped at the turn cap with partial output — not a
+   *  failure. The run still flows to review, which judges it as partial. */
+  capped?: boolean;
 }
 
 import type { ChatProvider } from "../providers/types.js";

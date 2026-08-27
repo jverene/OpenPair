@@ -180,14 +180,17 @@ export class ExecutorAgent {
     }
 
     // One summarization call turns raw harness output into execution notes.
+    const capNote = result.capped ? "The harness stopped at its TURN CAP with partial work. " : "";
     this.messages.push({
       role: "user",
-      content: `The harness completed. Raw output:\n${result.output.slice(0, 20_000)}\n\nReply with DONE: <what was done, findings, blockers>.`,
+      content: `${capNote}The harness completed. Raw output:\n${result.output.slice(0, 20_000)}\n\nReply with DONE: <what was done, findings, blockers>${result.capped ? ", and what remains unfinished because of the turn cap" : ""}.`,
     });
     const summary = (await this.provider.chat(this.messages)).trim();
     const summaryDirective = parseDirective(summary);
     return {
-      status: "done",
+      // max_turns flows to review as partial work (execution.md is marked);
+      // only protocol_failure and preflight failures halt.
+      status: result.capped ? "max_turns" : "done",
       text:
         summaryDirective.kind === "done" || summaryDirective.kind === "ready"
           ? summaryDirective.text
