@@ -268,3 +268,54 @@ describe("runPairLoop — capped harness work flows to review (pre-step)", () =>
     expect(execution).toContain("Artifact manifest");
   });
 });
+
+describe("runPairLoop — phantom-claim detection (4c mechanism)", () => {
+  it("REVISEs when the executor claims an artifact the manifest shows absent", async () => {
+    const liar: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("Review the execution")) return "REVISE: claimed guide.md is absent from the manifest.";
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return "INTENT:\nWrite the guide and save it as guide.md.\n\nINTENT NOTES:\nguide.md must exist.";
+      }
+      if (user.includes("Write your plan")) return "PLAN:\n1. Write guide.md.\n\nPLAN NOTES:\nn/a";
+      // Lying executor: claims the file, writes nothing.
+      return "DONE: Created guide.md with the complete 400-word onboarding guide.";
+    };
+    const result = await run(liar);
+    // The verdict itself is Vision's mock reply; the loop must route it to
+    // a second execution (REVISE) rather than approving the phantom claim.
+    expect(["needs_human", "halted", "approved"]).toContain(result.status);
+    const review = await new Notes(cwd).read("review.md");
+    expect(review).toContain("REVISE");
+    // The reviewer SAW the empty manifest (execution.md ends with it).
+    const execution = await new Notes(cwd).read("execution.md");
+    expect(execution).toContain("Artifact manifest");
+    expect(execution).toContain("EMPTY");
+  });
+});
+
+describe("runPairLoop — phantom-save rule reaches the reviewer (4c fix)", () => {
+  it("the review prompt explicitly covers 'saved as X' claims absent from the manifest", async () => {
+    const seen: string[] = [];
+    const track: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder") && user.includes("Review the execution")) {
+        seen.push(user);
+        return "REVISE: guide.md is claimed as saved but absent from the manifest.";
+      }
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT_REPLY;
+      }
+      if (user.includes("Write your plan")) return "PLAN:\nPlan v1.\n\nPLAN NOTES:\nn/a";
+      return "DONE: guide written and saved as guide.md.";
+    };
+    await run(track);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toContain('"saved as X"');
+    expect(seen[0]).toContain("ALWAYS a phantom claim");
+  });
+});
