@@ -40,7 +40,8 @@ export async function runWizard(): Promise<Config | null> {
         type: (prev: string, values: { provider: ProviderName }) =>
           values.provider === "ollama" ? null : "password",
         name: "apiKey",
-        message: "API key (leave blank to use the environment variable)",
+        message:
+          "API key — recommended: leave blank and set OPENAI_API_KEY (or ANTHROPIC_API_KEY) in your environment instead of storing it in a file",
       },
       {
         type: "select",
@@ -61,6 +62,7 @@ export async function runWizard(): Promise<Config | null> {
     baseURL: answers.baseURL || undefined,
     apiKey: answers.apiKey || undefined,
   };
-  await saveConfig(config);
+  const warning = await saveConfig(config);
+  if (warning) console.warn(warning);
   return config;
 }

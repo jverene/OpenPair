@@ -5,7 +5,7 @@
  * Keys may live in the config file (written by the wizard) or in the
  * environment; the environment wins so CI and power users can override.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -57,9 +57,29 @@ export async function loadConfig(): Promise<Config | null> {
   }
 }
 
-export async function saveConfig(config: Config): Promise<void> {
+/**
+ * Save the config. The file may contain an API key, so it is written 0600
+ * (owner-only). Existing group/world-readable configs are tightened too.
+ * Returns a warning when a pre-existing file had lax permissions.
+ */
+export async function saveConfig(config: Config): Promise<string | undefined> {
   await mkdir(join(homedir(), ".openpair"), { recursive: true });
-  await writeFile(configPath(), JSON.stringify(config, null, 2) + "\n", "utf8");
+  let warning: string | undefined;
+  try {
+    const { stat } = await import("node:fs/promises");
+    const info = await stat(configPath());
+    // eslint-disable-next-line no-bitwise -- permission bits
+    if (info.mode & 0o077) {
+      warning =
+        `WARNING: ${configPath()} was readable by group/others. ` +
+        "Permissions tightened to owner-only (0600).";
+    }
+  } catch {
+    // No existing config — nothing to warn about.
+  }
+  await writeFile(configPath(), JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+  await chmod(configPath(), 0o600);
+  return warning;
 }
 
 /**
