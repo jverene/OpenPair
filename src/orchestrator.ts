@@ -261,7 +261,12 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
     const plan = await notes.readFor(vision.name, "plan.md");
     const transcriptTail = await transcript.renderSince(-1);
     const verdict = await vision.review(intent, plan, execution, transcriptTail);
-    if (spinDetected(vision.name, verdict.body)) return { ...(await spinHalt(vision.name)), reviewCycles };
+    // Spin detection guards revision loops; an APPROVE verdict ends the
+    // loop (or hands to the human gate), so repeating it is legitimate —
+    // the human re-triggered the cycle, not a stuck agent.
+    if (verdict.decision !== "APPROVE" && spinDetected(vision.name, verdict.body)) {
+      return { ...(await spinHalt(vision.name)), reviewCycles };
+    }
     await notes.append("review.md", vision.name, `Review: ${verdict.decision}`, verdict.body);
     await transcript.append("Vision", "review", `${verdict.decision}: ${verdict.body}`);
     ui.vision(`Done. Wrote review.md — verdict: ${verdict.decision}.`);

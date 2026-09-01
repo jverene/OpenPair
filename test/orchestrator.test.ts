@@ -366,7 +366,8 @@ describe("runPairLoop — human circuit breaker (B5)", () => {
     const inner = baseScript();
     const counting: MockScript = (messages, i, o) => {
       const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
-      if (!messages.find((m) => m.role === "system")?.content?.includes("Vision Holder") && !user.includes("Write your plan")) executions++;
+      const sys2 = messages.find((m) => m.role === "system")?.content ?? "";
+      if (!sys2.includes("You are the Vision Holder") && !user.includes("Write your plan") && user.includes("Execute this plan")) executions++;
       return inner(messages, i, o);
     };
     const decisions: GateDecision[] = [
