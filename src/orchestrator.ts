@@ -27,6 +27,7 @@ import { UI } from "./ui.js";
 import { Transcript } from "./transcript.js";
 import { TrackingProvider, UsageTracker } from "./usage.js";
 import { renderManifest } from "./artifacts.js";
+import { humanGate, type GateDecision } from "./gate.js";
 
 export const MAX_REVIEW_CYCLES = 3;
 const MAX_QA_ROUNDS = 5;
@@ -55,6 +56,18 @@ export interface RunOptions {
   transcript?: Transcript;
   /** Context limit for compaction; defaults to OPENPAIR_CONTEXT_LIMIT or 128k. */
   contextLimit?: number;
+  /** Circuit-breaker gate (B5). Defaults to the interactive terminal gate;
+   *  tests and non-TTY runs inject alternatives. */
+  gate?: (state: GateState) => Promise<GateDecision>;
+}
+
+export interface GateState {
+  /** How many review cycles the loop already spent (revisions so far). */
+  reviewCycles: number;
+  /** Remaining revisions before the loop stops for the human. */
+  remaining: number;
+  /** Absolute cap. */
+  cap: number;
 }
 
 export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
@@ -253,14 +266,53 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
     await transcript.append("Vision", "review", `${verdict.decision}: ${verdict.body}`);
     ui.vision(`Done. Wrote review.md — verdict: ${verdict.decision}.`);
 
-    // Human gate: APPROVE ships; REVISE routes back until the cap.
     if (verdict.decision === "APPROVE") {
+      // Phase 4: Handoff — the human circuit breaker (B5). [a] approve,
+      // [r] request changes (counts against the review cap), [q] quit.
       ui.phase("Phase 4: Handoff");
-      ui.human("The pair has finished. Read .pair/review.md, then approve, request changes, or ask questions. You are the circuit breaker.");
-      await transcript.append("Orchestrator", "system", "Loop ended: approved. Human gate.");
-      return { status: "approved", reviewCycles };
+      for (;;) {
+        const decision = await (opts.gate ?? humanGate)({
+          reviewCycles,
+          remaining: maxReviewCycles - reviewCycles,
+          cap: maxReviewCycles,
+        });
+        await transcript.append(
+          "Orchestrator",
+          "system",
+          `Human gate: ${decision.kind}${decision.feedback ? ` — ${decision.feedback.slice(0, 200)}` : ""}`,
+        );
+
+        if (decision.kind === "approve") {
+          await transcript.append("Orchestrator", "system", "Loop ended: approved by the human.");
+          return { status: "approved", reviewCycles };
+        }
+        if (decision.kind === "quit") {
+          const reason = "Human chose to stop. All notes stand in .pair/.";
+          await notes.append("execution.md", "Orchestrator", "Stopped by human", reason);
+          await transcript.append("Orchestrator", "halt", reason);
+          return { status: "needs_human", reason, reviewCycles };
+        }
+
+        // Request changes: refused once the review-cycle cap is exhausted.
+        if (reviewCycles >= maxReviewCycles) {
+          const reason = `Review-cycle cap (${maxReviewCycles}) exhausted; cannot take more change requests. Notes stand in .pair/.`;
+          await transcript.append("Orchestrator", "halt", reason);
+          ui.human(reason);
+          return { status: "needs_human", reason, reviewCycles };
+        }
+        reviewCycles++;
+        reviewFeedback = decision.feedback?.trim()
+          ? `The human requested changes:\n${decision.feedback.trim()}`
+          : "The human requested changes (no specifics given): address any gaps in the current execution.";
+        await notes.append("execution.md", "Orchestrator", "Human change request", reviewFeedback);
+        await transcript.append("Orchestrator", "system", "Loop continues with the human's change request.");
+        ui.executor("Human feedback received. Revising plan and re-executing...");
+        break; // back to the plan/execute/review cycle
+      }
+      continue;
     }
 
+    // Vision REVISE: auto-route back to the Executor (unchanged design).
     reviewCycles++;
     if (reviewCycles >= maxReviewCycles) {
       const reason = `Review-cycle cap reached (${maxReviewCycles}). Stopping for human judgment; see .pair/review.md.`;
@@ -269,9 +321,6 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
       ui.human(reason);
       return { status: "needs_human", reason, reviewCycles };
     }
-
-    // Turn-end: REVISE → the Executor is auto-triggered to re-plan + re-execute.
     reviewFeedback = verdict.body;
-    ui.executor("Review found gaps. Revising plan and re-executing...");
-  }
+    ui.executor("Review found gaps. Revising plan and re-executing...");  }
 }

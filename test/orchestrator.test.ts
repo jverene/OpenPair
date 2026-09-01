@@ -11,6 +11,7 @@ import type { Config } from "../src/config.js";
 import { MockProvider, type MockScript } from "../src/providers/mock.js";
 import type { Harness, HarnessResult } from "../src/harness/types.js";
 import { runPairLoop } from "../src/orchestrator.js";
+import type { GateDecision } from "../src/gate.js";
 import { Notes } from "../src/notes.js";
 import { UI } from "../src/ui.js";
 
@@ -335,5 +336,95 @@ describe("runPairLoop — phantom-save rule reaches the reviewer (4c fix)", () =
     expect(seen.length).toBeGreaterThan(0);
     expect(seen[0]).toContain('"saved as X"');
     expect(seen[0]).toContain("ALWAYS a phantom claim");
+  });
+});
+
+describe("runPairLoop — human circuit breaker (B5)", () => {
+  const INTENT = "INTENT:\nDo the thing.\n\nINTENT NOTES:\nSmall scope.";
+  const baseScript = (): MockScript => {
+    let cycle = 0;
+    return (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("Review the execution")) return "APPROVE\n\nlooks done.";
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT;
+      }
+      // Vary plan/summary text per planning cycle so spin detection (which is
+      // doing its job) does not fire across human-change-request cycles.
+      if (user.includes("Write your plan")) {
+        cycle++;
+        return `PLAN:\nPlan v${cycle}.\n\nPLAN NOTES:\nvary ${cycle}`;
+      }
+      return `DONE: did the work (pass ${cycle + 1}).`;
+    };
+  };
+
+  it("[r] request changes injects human feedback and runs another cycle", async () => {
+    let executions = 0;
+    const inner = baseScript();
+    const counting: MockScript = (messages, i, o) => {
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (!messages.find((m) => m.role === "system")?.content?.includes("Vision Holder") && !user.includes("Write your plan")) executions++;
+      return inner(messages, i, o);
+    };
+    const decisions: GateDecision[] = [
+      { kind: "changes", feedback: "Make the intro friendlier." },
+      { kind: "approve" },
+    ];
+    const result = await runPairLoop({
+      goal: "test goal", config, provider: new MockProvider(counting), cwd, ui: new UI(true),
+      gate: async () => decisions.shift() ?? { kind: "approve" },
+    });
+    expect(result.status).toBe("approved");
+    // A second execution cycle ran after the change request.
+    expect(executions).toBeGreaterThanOrEqual(2);
+    const execution = await new Notes(cwd).read("execution.md");
+    expect(execution).toContain("Human change request");
+    expect(execution).toContain("Make the intro friendlier.");
+  });
+
+  it("[r] is refused once the review-cycle cap is exhausted, ends cleanly", async () => {
+    // Vision keeps REVISEing distinct gaps -> cap reached without the gate.
+    let n = 0;
+    const endless: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("Review the execution")) {
+          n++;
+          return `REVISE: distinct gap ${n}.`;
+        }
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT;
+      }
+      if (user.includes("Write your plan")) return `PLAN:\nPlan v${n + 1}.\n\nPLAN NOTES:\nn/a`;
+      return "DONE: did the work.";
+    };
+    let gateCalls = 0;
+    const result = await runPairLoop({
+      goal: "test goal", config, provider: new MockProvider(endless), cwd, ui: new UI(true),
+      gate: async () => { gateCalls++; return { kind: "changes", feedback: "again" }; },
+    });
+    expect(result.status).toBe("needs_human");
+    expect(result.reviewCycles).toBe(3);
+    expect(gateCalls).toBe(0); // the cap stopped the loop before any gate prompt
+  });
+
+  it("[q] quit stops with notes standing", async () => {
+    const result = await runPairLoop({
+      goal: "test goal", config, provider: new MockProvider(baseScript()), cwd, ui: new UI(true),
+      gate: async () => ({ kind: "quit" }),
+    });
+    expect(result.status).toBe("needs_human");
+    expect(result.reason).toContain("chose to stop");
+  });
+
+  it("non-TTY default gate prints state and approves cleanly", async () => {
+    const result = await runPairLoop({
+      goal: "test goal", config, provider: new MockProvider(baseScript()), cwd, ui: new UI(true),
+    });
+    expect(result.status).toBe("approved");
   });
 });
