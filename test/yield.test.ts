@@ -12,6 +12,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Config } from "../src/config.js";
 import { MockProvider, type MockScript } from "../src/providers/mock.js";
+import { runToolLoop } from "../src/agents/toolLoop.js";
+import { fileTools } from "../src/tools/files.js";
+import type { ChatProvider } from "../src/providers/types.js";
 import { runPairLoop } from "../src/orchestrator.js";
 import { Transcript } from "../src/transcript.js";
 import { UI } from "../src/ui.js";
@@ -191,5 +194,29 @@ describe("yield-based handoff (§2.2)", () => {
     for (const expected of ["system", "intent", "plan", "silent", "execution", "manifest", "review"]) {
       expect(kinds).toContain(expected);
     }
+  });
+});
+
+describe("B6 — turn cap + presumptive incompleteness", () => {
+  it("research tool loop now caps at 25 turns, not 15", async () => {
+    let calls = 0;
+    const looper: ChatProvider = {
+      name: "looper",
+      chat: async () => {
+        calls++;
+        return 'ACTION: {"tool": "list_dir", "args": {"path": "."}}';
+      },
+    };
+    const outcome = await runToolLoop({ provider: looper, tools: [fileTools[0]], system: "s", task: "t", cwd });
+    expect(calls).toBe(25);
+    expect(outcome.status).toBe("max_turns");
+  });
+
+  it("the review prompt demands plan-vs-manifest cross-check on capped runs", async () => {
+    const { reviewPrompt } = await import("../src/agents/prompts.js");
+    const p = reviewPrompt("i", "p", "e — stopped at the turn cap");
+    expect(p).toContain("PRESUMPTIVELY INCOMPLETE");
+    expect(p).toContain("trivially derivable");
+    expect(p).toContain("cross-check every deliverable");
   });
 });

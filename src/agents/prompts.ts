@@ -151,7 +151,7 @@ ${transcriptTail}
 
 The .pair/ notes (intent, plan, execution, review, qa) are deliverables too: flag missing sections as gaps.
 
-If the execution record notes it stopped at the turn cap, judge the PARTIAL work as such: credit everything that exists (verified against the manifest), and REVISE only if the intent's required outcomes are missing — not merely because the run was capped.
+If the execution record notes it stopped at the turn cap, the execution is PRESUMPTIVELY INCOMPLETE: cross-check every deliverable the plan promised against the Artifact Manifest. A capped run that is missing any planned deliverable must be REVISE — do not approve on the theory that the missing piece is "trivially derivable" or already visible in the transcript; a deliverable that exists only in the transcript is not a deliverable. Credit work that does exist, and say exactly which promised deliverable is absent.
 
 Judge scope discipline on the same axis as completeness: REVISE when the execution did MORE than the intent asked (unrequested files, features, or dependencies — bloat) exactly as you would when it did less.
 Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so the Executor can address it.`;

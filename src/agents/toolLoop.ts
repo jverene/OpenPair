@@ -40,7 +40,7 @@ export interface ToolLoopOutcome {
   usage?: ToolLoopUsage;
 }
 
-const DEFAULT_MAX_TURNS = 15;
+const DEFAULT_MAX_TURNS = 25;
 const MAX_NUDGES = 2;
 
 export function renderToolDocs(tools: Tool[]): string {
