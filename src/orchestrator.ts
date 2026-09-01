@@ -84,7 +84,9 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
   ]);
 
   const vision = new VisionAgent(visionProvider);
-  const executor = new ExecutorAgent(executorProvider, config.domain, cwd, opts.harness, transcript);
+  const executor = new ExecutorAgent(executorProvider, config.domain, cwd, opts.harness, transcript, (message) => {
+    ui.system(message);
+  });
   // Software fallback: route its tool loop through the tracked provider too.
   opts.harness?.setProvider?.(executorProvider);
 

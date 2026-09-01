@@ -186,26 +186,44 @@ describe("runPairLoop", () => {
     expect(result.status).toBe("approved"); // sanity: distinct replies don't trip it
   });
 
-  it("software domain: preflight failure halts before the real task", async () => {
+  it("software domain: preflight failure falls back to basic tools, never halts (B1)", async () => {
     const harness = new StubHarness(false);
-    const ready = script({ reviews: ["APPROVE"] });
-    const withReady: MockScript = (messages, i, o) => {
-      const reply = ready(messages, i, o) as string;
+    const INTENT_REPLY = "INTENT:\nDo the thing.\n\nINTENT NOTES:\nSmall scope.";
+    let sawFallbackTask = false;
+    const withReady: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
       const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("Review the execution")) {
+          // Only approve once the fallback actually produced the artifact.
+          return sawFallbackTask ? "APPROVE\n\nverified against the manifest." : "REVISE: no artifact yet.";
+        }
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT_REPLY;
+      }
+      if (user.includes("Write your plan")) return "PLAN:\nPlan v1.\n\nPLAN NOTES:\nn/a";
       if (user.includes("Execute this plan")) return "READY: build the thing";
-      return reply;
+      // The fallback harness's tool loop (its system prompt teaches basic tools).
+      if (system.includes("basic file and shell tools") || user.includes("Task:")) {
+        sawFallbackTask = true;
+        return 'ACTION: {"tool": "write_file", "args": {"path": "made-by-fallback.txt", "content": "x"}}';
+      }
+      if (user.includes("RESULT:")) return "DONE: built via fallback.";
+      return "DONE: did the work.";
     };
     const result = await run(withReady, {
       harness,
       config: { ...config, domain: "software" },
     });
-    expect(result.status).toBe("halted");
+    expect(result.status).toBe("approved"); // the loop survived the preflight failure
     expect(harness.preflightCalls).toBe(1);
-    expect(harness.executeCalls).toBe(0); // real task never attempted
+    expect(harness.executeCalls).toBe(0); // the broken harness never ran the task
+    expect(sawFallbackTask).toBe(true);
 
     const execution = await new Notes(cwd).read("execution.md");
-    expect(execution).toContain("preflight failed");
-    expect(execution).toContain("API key"); // actionable troubleshooting
+    expect(execution).toContain("preflight failed"); // visible in the record
+    const made = await import("node:fs/promises").then((fs) => fs.readFile(`${cwd}/made-by-fallback.txt`, "utf8"));
+    expect(made).toBe("x");
   });
 });
 

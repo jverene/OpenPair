@@ -35,7 +35,7 @@ describe("OpenCodeHarness", () => {
     const harness = new OpenCodeHarness("/tmp", {}, run);
     const result = await harness.preflight();
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("unparseable");
+    expect(result.error).toContain("no parseable output");
   });
 
   it("isInstalled is false when the binary is missing (exit 127)", async () => {
@@ -132,5 +132,43 @@ describe("FallbackHarness max_turns fix", () => {
     const result = await harness.execute("do the thing", "");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("protocol_failure");
+  });
+});
+
+describe("parseOpenCodeOutput (B1)", () => {
+  it("parses the current JSONL event stream and extracts text events", async () => {
+    const { parseOpenCodeOutput } = await import("../src/harness/opencode.js");
+    const stream = [
+      JSON.stringify({ type: "step_start", part: { type: "step-start" } }),
+      JSON.stringify({ type: "text", part: { type: "text", text: "hello " } }),
+      "spinner noise that is not json",
+      JSON.stringify({ type: "text", part: { type: "text", text: "world" } }),
+      JSON.stringify({ type: "step_finish", part: { type: "step-finish" } }),
+    ].join("\n");
+    const r = parseOpenCodeOutput(stream);
+    expect(r.ok).toBe(true);
+    expect(r.text).toBe("hello \nworld");
+  });
+
+  it("still parses the legacy single-JSON-document format", async () => {
+    const { parseOpenCodeOutput } = await import("../src/harness/opencode.js");
+    const r = parseOpenCodeOutput('{"ok": true, "text": "done"}');
+    expect(r.ok).toBe(true);
+    expect(r.text).toBe("done");
+  });
+
+  it("fails cleanly on pure garbage (no JSON anywhere)", async () => {
+    const { parseOpenCodeOutput } = await import("../src/harness/opencode.js");
+    const r = parseOpenCodeOutput("not json at all\nstill not json");
+    expect(r.ok).toBe(false);
+  });
+
+  it("preflight accepts JSONL output from a mocked runner", async () => {
+    const { OpenCodeHarness } = await import("../src/harness/opencode.js");
+    const stream = JSON.stringify({ type: "text", part: { type: "text", text: "README first line" } });
+    const run: Runner = async () => ({ code: 0, stdout: stream, stderr: "" });
+    const harness = new OpenCodeHarness("/tmp", {}, run);
+    const result = await harness.preflight();
+    expect(result.ok).toBe(true);
   });
 });

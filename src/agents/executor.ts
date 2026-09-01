@@ -10,6 +10,7 @@
 import type { Domain } from "../config.js";
 import type { ChatMessage, ChatProvider } from "../providers/types.js";
 import type { Harness } from "../harness/types.js";
+import { FallbackHarness } from "../harness/fallback.js";
 import { toolsForDomain } from "../tools/registry.js";
 import { executorSystem, executePrompt, planPrompt } from "./prompts.js";
 import { parseDirective, runToolLoop } from "./toolLoop.js";
@@ -42,11 +43,17 @@ export class ExecutorAgent {
     private readonly provider: ChatProvider,
     private readonly domain: Domain,
     private readonly cwd: string,
-    private readonly harness?: Harness,
+    harness?: Harness,
     private readonly transcript?: Transcript,
+    private readonly onNotice?: (message: string) => void,
   ) {
+    this.harness = harness;
     this.usesHarness = domain === "software" && harness !== undefined;
   }
+
+  private harness?: Harness;
+  /** Notice emitted when a failed preflight forced the fallback switch. */
+  private fallbackNotice: string | undefined;
 
   /** Transcript sink for tool events; wired by the orchestrator (§2.1). */
   private onToolEvent = (kind: "tool_call" | "tool_result", text: string): void => {
@@ -160,14 +167,19 @@ export class ExecutorAgent {
     const task = directive.kind === "ready" ? directive.text : plan; // READY: briefing, else the plan itself.
 
     // Mandatory preflight before every real task: a 15-second failure beats
-    // a 5-minute mystery. On failure: halt, do not proceed to the real task.
+    // a 5-minute mystery. On failure the loop NEVER halts — it falls back
+    // to the basic-tools harness with a visible notice (v0.2 first-hour fix).
     const preflight = await this.harness.preflight();
     if (!preflight.ok) {
-      return {
-        status: "halt",
-        text: `Harness preflight failed — real task NOT attempted.\n\n${preflight.error ?? preflight.output}`,
-        transcript: [],
-      };
+      const reason = (preflight.error ?? preflight.output ?? "").split("\n")[0];
+      this.harness = new FallbackHarness(this.provider, this.cwd, this.transcript);
+      this.fallbackNotice = `Harness preflight failed (${reason}) — fell back to basic file/shell tools for this task.`;
+      this.onNotice?.(this.fallbackNotice);
+      await this.transcript?.append(
+        "Orchestrator",
+        "system",
+        `Harness preflight failed; switched to the fallback harness. ${reason}`,
+      );
     }
 
     const result = await this.harness.execute(task, intent ? `Intent:\n${intent}` : "");
@@ -187,14 +199,17 @@ export class ExecutorAgent {
     });
     const summary = (await this.provider.chat(this.messages)).trim();
     const summaryDirective = parseDirective(summary);
+    const summaryText =
+      summaryDirective.kind === "done" || summaryDirective.kind === "ready"
+        ? summaryDirective.text
+        : summary;
+    const notice = this.fallbackNotice;
+    this.fallbackNotice = undefined;
     return {
       // max_turns flows to review as partial work (execution.md is marked);
       // only protocol_failure and preflight failures halt.
       status: result.capped ? "max_turns" : "done",
-      text:
-        summaryDirective.kind === "done" || summaryDirective.kind === "ready"
-          ? summaryDirective.text
-          : summary,
+      text: notice ? `${notice}\n\n${summaryText}` : summaryText,
       transcript: [result.output],
     };
   }
