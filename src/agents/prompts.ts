@@ -27,7 +27,8 @@ export const EXECUTOR_RULES = `Working rules:
 - Prefer the standard library over an installed dependency over a new dependency; adding a new dependency requires a written justification.
 - Build only what the intent asks for — nothing extra, no speculative features.
 - Match the conventions already present in the working directory; keep diffs minimal.
-- Record a tombstone for every alternative you considered and rejected.`;
+- Record a tombstone for every alternative you considered and rejected.
+- MATERIALIZE YOUR ANSWER: findings, analyses, and reports must be written to a user-facing file in the working directory (the intent names it, or pick an obvious one). Text that exists only in your reply or the transcript is invisible to the human and will fail review.`;
 
 export function executorSystem(domain: Domain, usesHarness: boolean): string {
   if (usesHarness) {
