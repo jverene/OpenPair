@@ -91,20 +91,32 @@ export async function runWizard(): Promise<Config | null> {
       return null;
     }
     console.warn("Re-prompting — fix the issue or press Ctrl+C to abort.");
+    // The provider is fixed at retry time, so prompts are chosen up front
+    // instead of via dynamic type-callers (those only see sibling answers).
+    const needsBaseUrl = config.provider === "ollama" || config.provider === "custom";
+    const needsKey = config.provider !== "ollama";
     const retry = await prompts(
       [
-        {
-          type: (prev, values: { provider: ProviderName }) => (values.provider === "ollama" || values.provider === "custom" ? "text" : null),
-          name: "baseURL",
-          message: "Base URL (OpenAI-compatible endpoint)",
-          initial: config.baseURL ?? "",
-        },
-        { type: "text", name: "model", message: "Model", initial: config.model },
-        {
-          type: (prev, values: { provider: ProviderName }) => (values.provider === "ollama" ? null : "password"),
-          name: "apiKey",
-          message: "API key — recommended: leave blank and set the provider's env var instead",
-        },
+        ...(needsBaseUrl
+          ? [
+              {
+                type: "text" as const,
+                name: "baseURL",
+                message: "Base URL (OpenAI-compatible endpoint)",
+                initial: config.baseURL ?? "",
+              },
+            ]
+          : []),
+        { type: "text" as const, name: "model", message: "Model", initial: config.model },
+        ...(needsKey
+          ? [
+              {
+                type: "password" as const,
+                name: "apiKey",
+                message: "API key — recommended: leave blank and set the provider's env var instead",
+              },
+            ]
+          : []),
       ],
       { onCancel: () => null },
     );
