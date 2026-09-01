@@ -76,7 +76,18 @@ program
     }
 
     ui.system(`Provider: ${provider.name} · Model: ${config.model} · Domain: ${config.domain}`);
-    const result = await runPairLoop({ goal, config, provider, cwd, ui, harness, transcript });
+    let result;
+    try {
+      result = await runPairLoop({ goal, config, provider, cwd, ui, harness, transcript });
+    } catch (err) {
+      // First-hour fix: translate provider/network failures into one
+      // actionable message. No stack dumps unless OPENPAIR_DEBUG is set.
+      const { describeProviderError } = await import("./errors.js");
+      ui.system(describeProviderError(err, config.model, config.provider));
+      if (process.env.OPENPAIR_DEBUG) throw err;
+      process.exitCode = 1;
+      return;
+    }
 
     if (result.status === "approved") {
       process.exitCode = 0;
