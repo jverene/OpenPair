@@ -85,13 +85,27 @@ export class OpenAIProvider implements ChatProvider {
     const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming = {
       model: this.model,
       messages: messages.map(toSdkMessage),
-      max_tokens: options.maxTokens,
     };
+    if (options.maxTokens) params.max_tokens = options.maxTokens;
     if (withTools && options.tools) {
       params.tools = options.tools.map(toSdkTool);
       params.tool_choice = "auto";
     }
-    const response = await this.client.chat.completions.create(params);
+    let response: OpenAI.Chat.Completions.ChatCompletion;
+    try {
+      response = await this.client.chat.completions.create(params);
+    } catch (err) {
+      // Newer OpenAI models (gpt-5 family, o-series) reject `max_tokens` and
+      // require `max_completion_tokens`. Retry once with the modern param.
+      const anyErr = err as { code?: string; param?: string };
+      if (options.maxTokens && anyErr?.code === "unsupported_parameter" && anyErr?.param === "max_tokens") {
+        const modern = { ...params, max_completion_tokens: options.maxTokens } as typeof params;
+        delete (modern as Partial<typeof params>).max_tokens;
+        response = await this.client.chat.completions.create(modern);
+      } else {
+        throw err;
+      }
+    }
     this.logUsage(response);
     return response;
   }
