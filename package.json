@@ -2,6 +2,15 @@
   "name": "@jverene/openpair",
   "version": "0.1.0",
   "description": "Two agents. One vision. One executor. Every decision documented.",
+  "author": "jverene",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jverene/OpenPair.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jverene/OpenPair/issues"
+  },
+  "homepage": "https://github.com/jverene/OpenPair#readme",
   "type": "module",
   "bin": {
     "openpair": "dist/cli.js"
