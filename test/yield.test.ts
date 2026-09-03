@@ -220,3 +220,29 @@ describe("B6 — turn cap + presumptive incompleteness", () => {
     expect(p).toContain("cross-check every deliverable");
   });
 });
+
+describe("cross-model hardening", () => {
+  it("review prompt forbids demanding .pair files in the manifest", async () => {
+    const { reviewPrompt } = await import("../src/agents/prompts.js");
+    const p = reviewPrompt("i", "p", "e");
+    expect(p).toContain("NEVER demand that .pair/ files appear in the Artifact Manifest");
+  });
+
+  it("transcript render caps at the char limit, keeping the newest events", async () => {
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "cap-"));
+    const t = new Transcript(dir);
+    await t.init();
+    for (let i = 0; i < 50; i++) {
+      await t.append("Executor", "tool_call", "x".repeat(5000) + ` #${i}`);
+    }
+    const rendered = await t.renderSince(-1, 50_000);
+    expect(rendered.length).toBeLessThan(60_000);
+    expect(rendered).toContain("earlier event(s) omitted");
+    expect(rendered).toContain("#49"); // newest kept
+    expect(rendered).not.toContain("#0\n"); // oldest dropped
+    await rm(dir, { recursive: true, force: true });
+  });
+});

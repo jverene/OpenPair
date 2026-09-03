@@ -70,10 +70,28 @@ export class Transcript {
     return (await this.events()).slice(index + 1);
   }
 
-  /** Events after `index` rendered as markdown for prompts. */
-  async renderSince(index: number): Promise<string> {
+  /**
+   * Events after `index` rendered as markdown for prompts. The newest events
+   * win: the render is capped at `charLimit` characters (measured from the
+   * end) so a long session can never push the review call past the model's
+   * context window.
+   */
+  async renderSince(index: number, charLimit = 50_000): Promise<string> {
     const tail = await this.since(index);
     if (tail.length === 0) return "(no events yet)";
-    return tail.map((e) => `- [${e.ts}] ${e.actor}/${e.kind}: ${e.text}`).join("\n");
+    const lines = tail.map((e) => `- [${e.ts}] ${e.actor}/${e.kind}: ${e.text}`);
+    let total = 0;
+    let first = 0;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      total += lines[i].length + 1;
+      if (total > charLimit) {
+        first = i + 1;
+        break;
+      }
+      first = i;
+    }
+    const kept = lines.slice(first);
+    const marker = first > 0 ? `(… ${first} earlier event(s) omitted — transcript tail only)\n` : "";
+    return marker + kept.join("\n");
   }
 }

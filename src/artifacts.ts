@@ -44,8 +44,8 @@ export async function buildManifest(cwd: string): Promise<ManifestEntry[]> {
 export async function renderManifest(cwd: string): Promise<string> {
   const entries = await buildManifest(cwd);
   if (entries.length === 0) {
-    return "Artifact manifest (working directory, excluding .pair/node_modules/.git): EMPTY — no files were produced.";
+    return "Artifact manifest (working directory; .pair/, node_modules, .git excluded by design — these notes live outside the manifest): EMPTY — no files were produced.";
   }
   const lines = entries.map((e) => `- ${e.path} — ${e.bytes} bytes, modified ${e.modified}`);
-  return `Artifact manifest (working directory, excluding .pair/node_modules/.git):\n${lines.join("\n")}`;
+  return `Artifact manifest (working directory; .pair/, node_modules, .git excluded by design — these notes live outside the manifest):\n${lines.join("\n")}`;
 }

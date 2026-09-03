@@ -150,7 +150,7 @@ The append-only transcript of every agent output, question, answer, tool call, a
 ${transcriptTail}
 </shared-transcript>
 
-The .pair/ notes (intent, plan, execution, review, qa) are deliverables too: flag missing sections as gaps.
+The .pair/ notes (intent, plan, execution, review, qa) are deliverables too: flag missing sections as gaps — but NEVER demand that .pair/ files appear in the Artifact Manifest: the manifest excludes .pair/ by design, and only the orchestrator writes those files. Review the notes' content directly; judge user-facing artifacts via the manifest.
 
 If the execution record notes it stopped at the turn cap, the execution is PRESUMPTIVELY INCOMPLETE: cross-check every deliverable the plan promised against the Artifact Manifest. A capped run that is missing any planned deliverable must be REVISE — do not approve on the theory that the missing piece is "trivially derivable" or already visible in the transcript; a deliverable that exists only in the transcript is not a deliverable. Credit work that does exist, and say exactly which promised deliverable is absent.
 
