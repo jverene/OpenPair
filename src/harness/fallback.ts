@@ -8,23 +8,35 @@
  */
 import type { ChatProvider } from "../providers/types.js";
 import { fallbackTools } from "../tools/registry.js";
-import { renderToolDocs, runToolLoop } from "../agents/toolLoop.js";
+import { runToolLoop } from "../agents/toolLoop.js";
+import type { Transcript } from "../transcript.js";
 import type { Harness, HarnessResult } from "./types.js";
 
 const FALLBACK_SYSTEM = `You are the execution engine of a pair-programming system, running with basic file and shell tools.
-Work autonomously inside the working directory. Use tools via directives on the first line of your reply:
-  ACTION: {"tool": "<name>", "args": {...}}
-When the task is fully complete, reply: DONE: <summary of what you did>.
-Available tools:
-{TOOLS}`;
+Work autonomously inside the working directory.`;
+
+/** Turn budget for the fallback tool loop. Generous: the deadlock this
+ *  replaced (15 turns spent, work done, run halted) came from verification
+ *  steps after completion, not from real work. */
+const FALLBACK_MAX_TURNS = 25;
 
 export class FallbackHarness implements Harness {
   readonly name = "fallback";
 
   constructor(
-    private readonly provider: ChatProvider,
+    provider: ChatProvider,
     private readonly cwd: string,
-  ) {}
+    private readonly transcript?: Transcript,
+  ) {
+    this.provider = provider;
+  }
+
+  private provider: ChatProvider;
+
+  /** Orchestrator hook: run through the per-agent tracked provider (§2.4). */
+  setProvider(provider: ChatProvider): void {
+    this.provider = provider;
+  }
 
   async preflight(): Promise<HarnessResult> {
     return { ok: true, output: "Fallback harness: no external preflight required." };
@@ -35,14 +47,26 @@ export class FallbackHarness implements Harness {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: FALLBACK_SYSTEM.replace("{TOOLS}", renderToolDocs(tools)),
+      system: FALLBACK_SYSTEM,
       task: context ? `${context}\n\nTask:\n${task}` : task,
       cwd: this.cwd,
+      maxTurns: FALLBACK_MAX_TURNS,
+      onEvent: this.transcript
+        ? (kind, text) => {
+            void this.transcript?.append("Executor", kind, text);
+          }
+        : undefined,
     });
-    return {
-      ok: outcome.status === "done",
-      output: [...outcome.transcript, outcome.text].join("\n\n"),
-      error: outcome.status === "done" ? undefined : `Fallback harness ended with status: ${outcome.status}`,
-    };
+    const output = [...outcome.transcript, outcome.text].join("\n\n");
+    if (outcome.status === "done") {
+      return { ok: true, output };
+    }
+    if (outcome.status === "max_turns") {
+      // Partial work, not a failure: flow to review, which judges the
+      // turn-capped run against the artifact manifest.
+      return { ok: true, output, capped: true };
+    }
+    // protocol_failure (and anything else) is a genuine failure -> halt.
+    return { ok: false, output, error: `Fallback harness ended with status: ${outcome.status}` };
   }
 }

@@ -37,6 +37,9 @@ export function defaultMockScript(): MockScript {
       .join("\n");
 
     if (system.includes("You are the Vision Holder")) {
+      if (user.includes("SILENT") && user.includes("OBJECT")) {
+        return "SILENT";
+      }
       if (user.includes("Review the execution")) {
         return [
           "APPROVE",

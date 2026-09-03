@@ -10,16 +10,19 @@
 import type { Domain } from "../config.js";
 import type { ChatMessage, ChatProvider } from "../providers/types.js";
 import type { Harness } from "../harness/types.js";
+import { FallbackHarness } from "../harness/fallback.js";
 import { toolsForDomain } from "../tools/registry.js";
 import { executorSystem, executePrompt, planPrompt } from "./prompts.js";
 import { parseDirective, runToolLoop } from "./toolLoop.js";
+import { COMPACTION_PROMPT } from "./prompts.js";
+import type { Transcript } from "../transcript.js";
 
 export interface PlanDoc {
   plan: string;
   planNotes: string;
 }
 
-export type ExecuteStatus = "done" | "question" | "halt" | "max_turns";
+export type ExecuteStatus = "done" | "question" | "halt" | "max_turns" | "protocol_failure";
 
 export interface ExecuteOutcome {
   status: ExecuteStatus;
@@ -40,10 +43,23 @@ export class ExecutorAgent {
     private readonly provider: ChatProvider,
     private readonly domain: Domain,
     private readonly cwd: string,
-    private readonly harness?: Harness,
+    harness?: Harness,
+    private readonly transcript?: Transcript,
+    private readonly onNotice?: (message: string) => void,
   ) {
+    this.harness = harness;
     this.usesHarness = domain === "software" && harness !== undefined;
   }
+
+  private harness?: Harness;
+  /** Notice emitted when a failed preflight forced the fallback switch. */
+  private fallbackNotice: string | undefined;
+
+  /** Transcript sink for tool events; wired by the orchestrator (§2.1). */
+  private onToolEvent = (kind: "tool_call" | "tool_result", text: string): void => {
+    // The orchestrator stamps the actor; tool events are always the Executor's.
+    void this.transcript?.append("Executor", kind, text);
+  };
 
   async writePlan(intent: string, intentNotes: string, reviewFeedback?: string): Promise<PlanDoc> {
     // A new plan invalidates any in-flight execution conversation.
@@ -79,9 +95,10 @@ export class ExecutorAgent {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: executorSystem(this.domain, tools, false),
+      system: executorSystem(this.domain, false),
       task: "",
       cwd: this.cwd,
+      onEvent: this.onToolEvent,
       messages: [
         ...this.lastOutcome.messages,
         { role: "user", content: `The Vision Holder answered your question: ${answer}\nContinue.` },
@@ -91,11 +108,45 @@ export class ExecutorAgent {
     return toExecuteOutcome(outcome);
   }
 
+  /**
+   * Self-authored compaction at a yield boundary (§2.4). Called by the
+   * orchestrator when the executor's live conversation is near the context
+   * limit. Replaces older conversation with the agent's own summary and
+   * appends the compaction event to the shared transcript so the peer knows
+   * memory was lost. Returns the summary, or null when nothing to compact.
+   */
+  async maybeCompact(lastPromptTokens: number, contextLimit: number): Promise<string | null> {
+    if (!this.lastOutcome || this.lastOutcome.messages.length === 0) return null;
+    if (lastPromptTokens < contextLimit * 0.75) return null;
+    const system = executorSystem(this.domain, this.usesHarness);
+    const summary = (
+      await this.provider.chat([
+        { role: "system", content: system },
+        { role: "user", content: COMPACTION_PROMPT },
+      ])
+    ).trim();
+    const compacted = summary.replace(/^COMPACTED:?\s*/m, "").trim() || summary;
+    this.lastOutcome = {
+      ...this.lastOutcome,
+      messages: [
+        ...this.lastOutcome.messages.slice(0, 1), // keep the system prompt
+        {
+          role: "user",
+          content:
+            `MEMORY COMPACTION occurred. Your prior conversation was replaced by your own summary; ` +
+            `the shared transcript records the event. Resume from:\n\n${compacted}`,
+        },
+      ],
+    };
+    await this.transcript?.append("Orchestrator", "compaction", `Executor compacted at ~${Math.round((lastPromptTokens / contextLimit) * 100)}% of context. Summary:\n${compacted}`);
+    return compacted;
+  }
+
   // ---- software domain: delegate to the harness -------------------------
 
   private async executeViaHarness(plan: string, intent: string): Promise<ExecuteOutcome> {
     this.messages = [
-      { role: "system", content: executorSystem(this.domain, [], true) },
+      { role: "system", content: executorSystem(this.domain, true) },
       { role: "user", content: executePrompt(plan, intent) },
     ];
     return this.continueHarness(plan, intent);
@@ -116,14 +167,19 @@ export class ExecutorAgent {
     const task = directive.kind === "ready" ? directive.text : plan; // READY: briefing, else the plan itself.
 
     // Mandatory preflight before every real task: a 15-second failure beats
-    // a 5-minute mystery. On failure: halt, do not proceed to the real task.
+    // a 5-minute mystery. On failure the loop NEVER halts — it falls back
+    // to the basic-tools harness with a visible notice (v0.2 first-hour fix).
     const preflight = await this.harness.preflight();
     if (!preflight.ok) {
-      return {
-        status: "halt",
-        text: `Harness preflight failed — real task NOT attempted.\n\n${preflight.error ?? preflight.output}`,
-        transcript: [],
-      };
+      const reason = (preflight.error ?? preflight.output ?? "").split("\n")[0];
+      this.harness = new FallbackHarness(this.provider, this.cwd, this.transcript);
+      this.fallbackNotice = `Harness preflight failed (${reason}) — fell back to basic file/shell tools for this task.`;
+      this.onNotice?.(this.fallbackNotice);
+      await this.transcript?.append(
+        "Orchestrator",
+        "system",
+        `Harness preflight failed; switched to the fallback harness. ${reason}`,
+      );
     }
 
     const result = await this.harness.execute(task, intent ? `Intent:\n${intent}` : "");
@@ -136,18 +192,24 @@ export class ExecutorAgent {
     }
 
     // One summarization call turns raw harness output into execution notes.
+    const capNote = result.capped ? "The harness stopped at its TURN CAP with partial work. " : "";
     this.messages.push({
       role: "user",
-      content: `The harness completed. Raw output:\n${result.output.slice(0, 20_000)}\n\nReply with DONE: <what was done, findings, blockers>.`,
+      content: `${capNote}The harness completed. Raw output:\n${result.output.slice(0, 20_000)}\n\nReply with DONE: <what was done, findings, blockers>${result.capped ? ", and what remains unfinished because of the turn cap" : ""}.`,
     });
     const summary = (await this.provider.chat(this.messages)).trim();
     const summaryDirective = parseDirective(summary);
+    const summaryText =
+      summaryDirective.kind === "done" || summaryDirective.kind === "ready"
+        ? summaryDirective.text
+        : summary;
+    const notice = this.fallbackNotice;
+    this.fallbackNotice = undefined;
     return {
-      status: "done",
-      text:
-        summaryDirective.kind === "done" || summaryDirective.kind === "ready"
-          ? summaryDirective.text
-          : summary,
+      // max_turns flows to review as partial work (execution.md is marked);
+      // only protocol_failure and preflight failures halt.
+      status: result.capped ? "max_turns" : "done",
+      text: notice ? `${notice}\n\n${summaryText}` : summaryText,
       transcript: [result.output],
     };
   }
@@ -159,9 +221,10 @@ export class ExecutorAgent {
     const outcome = await runToolLoop({
       provider: this.provider,
       tools,
-      system: executorSystem(this.domain, tools, false),
+      system: executorSystem(this.domain, false),
       task: executePrompt(plan, intent),
       cwd: this.cwd,
+      onEvent: this.onToolEvent,
       messages: this.lastOutcome?.messages,
     });
     this.lastOutcome = outcome;

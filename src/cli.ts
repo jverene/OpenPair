@@ -13,6 +13,7 @@ import { MockProvider, defaultMockScript } from "./providers/mock.js";
 import { createHarness } from "./harness/index.js";
 import type { Harness, HarnessResult } from "./harness/types.js";
 import { runPairLoop } from "./orchestrator.js";
+import { Transcript } from "./transcript.js";
 import { UI } from "./ui.js";
 import { runWizard } from "./wizard.js";
 
@@ -38,6 +39,8 @@ program
   .action(async (goal: string | undefined, opts: { mock?: boolean; reconfigure?: boolean }) => {
     const ui = new UI();
     const cwd = process.cwd();
+    const transcript = new Transcript(cwd);
+    await transcript.init();
 
     if (!goal) {
       program.help();
@@ -66,14 +69,25 @@ program
       provider = createProvider(config);
 
       if (config.domain === "software") {
-        const selected = await createHarness({ config, provider, cwd });
+        const selected = await createHarness({ config, provider, cwd, transcript });
         harness = selected.harness;
         if (selected.notice) ui.system(selected.notice);
       }
     }
 
     ui.system(`Provider: ${provider.name} · Model: ${config.model} · Domain: ${config.domain}`);
-    const result = await runPairLoop({ goal, config, provider, cwd, ui, harness });
+    let result;
+    try {
+      result = await runPairLoop({ goal, config, provider, cwd, ui, harness, transcript });
+    } catch (err) {
+      // First-hour fix: translate provider/network failures into one
+      // actionable message. No stack dumps unless OPENPAIR_DEBUG is set.
+      const { describeProviderError } = await import("./errors.js");
+      ui.system(describeProviderError(err, config.model, config.provider));
+      if (process.env.OPENPAIR_DEBUG) throw err;
+      process.exitCode = 1;
+      return;
+    }
 
     if (result.status === "approved") {
       process.exitCode = 0;

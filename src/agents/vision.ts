@@ -8,6 +8,7 @@ import {
   VISION_SYSTEM,
   answerPrompt,
   intentPrompt,
+  planHandoffPrompt,
   reviewPrompt,
 } from "./prompts.js";
 
@@ -43,11 +44,29 @@ export class VisionAgent {
     ).trim();
   }
 
-  async review(intent: string, plan: string, execution: string): Promise<Verdict> {
+  /**
+   * Yield boundary after the Executor posts a plan: SILENT (proceed) or
+   * OBJECT with concrete corrections. Anything not starting with OBJECT is
+   * treated as SILENT — the default at a handoff is "no objection".
+   */
+  async respondToPlan(intent: string, plan: string, planNotes: string): Promise<string> {
     const reply = (
       await this.provider.chat([
         { role: "system", content: VISION_SYSTEM },
-        { role: "user", content: reviewPrompt(intent, plan, execution) },
+        { role: "user", content: planHandoffPrompt(intent, plan, planNotes) },
+      ])
+    ).trim();
+    if (reply.toUpperCase().startsWith("OBJECT")) {
+      return reply.slice("OBJECT:".length).trim() || reply;
+    }
+    return "SILENT";
+  }
+
+  async review(intent: string, plan: string, execution: string, transcriptTail?: string): Promise<Verdict> {
+    const reply = (
+      await this.provider.chat([
+        { role: "system", content: VISION_SYSTEM },
+        { role: "user", content: reviewPrompt(intent, plan, execution, transcriptTail) },
       ])
     ).trim();
 

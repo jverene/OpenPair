@@ -18,6 +18,48 @@ export const PREFLIGHT_TIMEOUT_MS = 15_000;
 export const TASK_TIMEOUT_MS = 300_000;
 export const PREFLIGHT_TASK = "Read README.md and report its first line";
 
+/**
+ * Parse `opencode run --format json` output. Current opencode emits a JSONL
+ * event stream (one JSON object per line: step_start / text / step_finish);
+ * older versions emitted a single JSON document. Both are accepted; stray
+ * non-JSON lines (spinner noise, warnings) are tolerated.
+ * @returns ok=true when at least one JSON event/document was parsed.
+ */
+export function parseOpenCodeOutput(stdout: string): { ok: boolean; text: string } {
+  const trimmed = stdout.trim();
+  if (!trimmed) return { ok: false, text: "" };
+
+  // Legacy single-document format.
+  try {
+    const doc = JSON.parse(trimmed) as { text?: unknown; content?: unknown };
+    const legacyText =
+      typeof doc.text === "string" ? doc.text : typeof doc.content === "string" ? doc.content : trimmed;
+    return { ok: true, text: legacyText };
+  } catch {
+    // Fall through to the JSONL event stream.
+  }
+
+  const texts: string[] = [];
+  let sawJson = false;
+  for (const line of trimmed.split("\n")) {
+    const l = line.trim();
+    if (!l) continue;
+    try {
+      const ev = JSON.parse(l) as {
+        type?: string;
+        part?: { type?: string; text?: unknown };
+        text?: unknown;
+      };
+      sawJson = true;
+      if (ev.type === "text" && typeof ev.part?.text === "string") texts.push(ev.part.text);
+      else if (ev.type === "result" && typeof ev.text === "string") texts.push(ev.text);
+    } catch {
+      // Tolerate non-JSON lines (spinner output, warnings).
+    }
+  }
+  return { ok: sawJson, text: texts.join("\n") };
+}
+
 export interface RunOutput {
   code: number;
   stdout: string;
@@ -103,18 +145,17 @@ export class OpenCodeHarness implements Harness {
         error: troubleshoot(res.stderr || res.stdout),
       };
     }
-    try {
-      JSON.parse(res.stdout);
-    } catch {
+    const parsed = parseOpenCodeOutput(res.stdout);
+    if (!parsed.ok) {
       return {
         ok: false,
         output: res.stdout,
         error:
-          "OpenCode returned unparseable output (expected --format json). " +
-          "Check that your OpenCode version supports `opencode run --format json` (upgrade: npm install -g opencode@latest).",
+          "OpenCode returned no parseable output (neither JSONL events nor a JSON document). " +
+          "Check your OpenCode installation (https://opencode.ai/docs) — this task will fall back to basic tools.",
       };
     }
-    return { ok: true, output: res.stdout };
+    return { ok: true, output: parsed.text || res.stdout };
   }
 
   async execute(task: string, context: string): Promise<HarnessResult> {
@@ -127,7 +168,15 @@ export class OpenCodeHarness implements Harness {
     if (res.code !== 0) {
       return { ok: false, output: res.stdout, error: troubleshoot(res.stderr || res.stdout) };
     }
-    return { ok: true, output: res.stdout };
+    const parsed = parseOpenCodeOutput(res.stdout);
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        output: res.stdout,
+        error: "OpenCode returned no parseable output. Check your OpenCode installation (https://opencode.ai/docs).",
+      };
+    }
+    return { ok: true, output: parsed.text || res.stdout };
   }
 }
 
