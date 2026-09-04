@@ -246,3 +246,14 @@ describe("cross-model hardening", () => {
     await rm(dir, { recursive: true, force: true });
   });
 });
+
+describe("date anchoring", () => {
+  it("every working prompt carries the real current date", async () => {
+    const { intentPrompt, planPrompt, executePrompt, reviewPrompt, currentDateLine } = await import("../src/agents/prompts.js");
+    for (const p of [intentPrompt("g"), planPrompt("i", "n"), executePrompt("p", "i"), reviewPrompt("i", "p", "e")]) {
+      expect(p).toContain("Current date: 2");
+      expect(p).toContain("never guess today's date");
+    }
+    expect(currentDateLine()).toMatch(/Current date: \d{4}-\d{2}-\d{2}/);
+  });
+});

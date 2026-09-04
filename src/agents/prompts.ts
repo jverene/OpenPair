@@ -49,8 +49,16 @@ Otherwise reply with:
 ${EXECUTOR_RULES}`;
 }
 
+/** Models have no clock: anchor every run to the real date (UTC). */
+export function currentDateLine(now = new Date()): string {
+  const iso = now.toISOString();
+  return `Current date: ${iso.slice(0, 10)} (${iso.slice(11, 16)} UTC). Use this for all date arithmetic — never guess today's date.`;
+}
+
 export function intentPrompt(goal: string): string {
-  return `The human's goal:
+  return `${currentDateLine()}
+
+The human's goal:
 
 ${goal}
 
@@ -68,6 +76,8 @@ export function planPrompt(intent: string, intentNotes: string, reviewFeedback?:
     ? `\n\nThe Vision Holder reviewed your previous execution and found gaps. Address every one:\n${reviewFeedback}`
     : "";
   return `Write your plan for this intent. Do not execute yet — plan only.
+
+${currentDateLine()}
 
 <intent>
 ${intent}
@@ -88,6 +98,8 @@ PLAN NOTES:
 
 export function executePrompt(plan: string, intent: string): string {
   return `Execute this plan now.
+
+${currentDateLine()}
 
 <intent>
 ${intent}
@@ -130,6 +142,8 @@ COMPACTED:
 
 export function reviewPrompt(intent: string, plan: string, execution: string, transcriptTail = "(transcript unavailable)"): string {
   return `Review the execution against the original intent. This is an intent review, not a code review: did it solve the right problem? Are there missed edge cases? Is the approach sound?
+
+${currentDateLine()}
 
 Verify, don't trust: the execution record ends with an Artifact Manifest of what actually exists in the working directory. Any artifact the execution claims to have produced MUST appear in that manifest, and the transcript must show the corresponding work. If a claimed artifact is absent from the manifest, or the transcript shows no work backing a claim, reply REVISE and say exactly which claimed artifact is missing. A claim that an artifact was "saved as X" or "written to X" when X is absent from the manifest is ALWAYS a phantom claim — REVISE regardless of how the intent words it. An empty manifest means nothing was produced — approving that requires the intent to have explicitly required no artifacts.
 
