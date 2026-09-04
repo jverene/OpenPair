@@ -15,7 +15,7 @@ Both agents see one shared, append-only transcript — `.pair/transcript.jsonl` 
 
 1. **Intent** — Vision writes `.pair/intent.md` and `.pair/intentnotes.md`.
 2. **Plan** — Executor posts `plan.md` + `plannotes.md`. Vision is invoked at the handoff: it replies `SILENT` (no objection — proceed) or `OBJECT` with concrete corrections (one replan).
-3. **Execute** — Executor runs the plan with real tools. Tool calls stream into the transcript; they never yield the keyboard. Questions go to `qa.md`; Vision answers; the Executor resumes automatically.
+3. **Execute** — Executor runs the plan with real tools. Tool calls stream into the transcript; they never yield the keyboard. When the intent turns out to be ambiguous mid-work, the Executor asks Vision **directly** (`ASK:` / the `ask_vision` tool) and continues in the same working session — both sides of the exchange land in `qa.md` and the transcript. (The old `QUESTION:` handoff, which ends the execution, still exists for whole-task blockers.)
 4. **Review** — the orchestrator snapshots an **artifact manifest** (what actually exists on disk, sizes and timestamps) into `execution.md`, then Vision reviews the work *and* the manifest against the intent. A claimed artifact that isn't on disk is a phantom claim — automatic `REVISE`.
 5. **Circuit breaker** — on `APPROVE`, the human takes over at the interactive gate:
 
