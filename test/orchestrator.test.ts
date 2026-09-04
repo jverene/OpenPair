@@ -11,6 +11,7 @@ import type { Config } from "../src/config.js";
 import { MockProvider, type MockScript } from "../src/providers/mock.js";
 import type { Harness, HarnessResult } from "../src/harness/types.js";
 import { runPairLoop } from "../src/orchestrator.js";
+import { Transcript } from "../src/transcript.js";
 import type { GateDecision } from "../src/gate.js";
 import { Notes } from "../src/notes.js";
 import { UI } from "../src/ui.js";
@@ -427,5 +428,41 @@ describe("runPairLoop — human circuit breaker (B5)", () => {
       goal: "test goal", config, provider: new MockProvider(baseScript()), cwd, ui: new UI(true),
     });
     expect(result.status).toBe("approved");
+  });
+});
+
+describe("runPairLoop — direct peer channel (orchestrator integration)", () => {
+  it("executor ASKs mid-work; both sides land in qa.md and transcript; cap honored", async () => {
+    const INTENT = "INTENT:\nDo the thing.\n\nINTENT NOTES:\nSmall scope.";
+    const replies: string[] = [
+      "ASK: Which output filename do you want?",
+      'ACTION: {"tool": "write_file", "args": {"path": "out.txt", "content": "x"}}',
+      "DONE: wrote out.txt",
+    ];
+    let n = 0;
+    const scripted: MockScript = (messages) => {
+      const system = messages.find((m) => m.role === "system")?.content ?? "";
+      const user = messages.filter((m) => m.role === "user").map((m) => m.content).join("\n");
+      if (system.includes("You are the Vision Holder")) {
+        if (user.includes("blocked on a question")) return "Name it out.txt (direct answer).";
+        if (user.includes("Review the execution")) return "APPROVE\n\nverified.";
+        if (user.includes("SILENT") && user.includes("OBJECT")) return "SILENT";
+        return INTENT;
+      }
+      if (user.includes("Write your plan")) return "PLAN:\nPlan v1.\n\nPLAN NOTES:\nn/a";
+      return replies[Math.min(n++, replies.length - 1)];
+    };
+    const result = await runPairLoop({
+      goal: "test goal", config, provider: new MockProvider(scripted), cwd, ui: new UI(true),
+    });
+    expect(result.status).toBe("approved");
+    const qa = await new Notes(cwd).read("qa.md");
+    expect(qa).toContain("Question (direct)");
+    expect(qa).toContain("Which output filename do you want?");
+    expect(qa).toContain("Answer (direct)");
+    expect(qa).toContain("Name it out.txt");
+    const events = await new Transcript(cwd).events();
+    expect(events.some((e) => e.kind === "question" && e.text.startsWith("[direct]")));
+    expect(events.some((e) => e.kind === "answer" && e.text.startsWith("[direct]")));
   });
 });

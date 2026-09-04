@@ -182,3 +182,66 @@ describe("runToolLoop — text fallback still works", () => {
     expect(outcome.text).toContain("The script must have failed");
   });
 });
+
+describe("runToolLoop — direct peer channel (ASK / ask_vision)", () => {
+  it("text mode: ASK mid-loop gets an answer and continues without ending the loop", async () => {
+    const replies = [
+      "ASK: Should the report use tables or prose?",
+      'ACTION: {"tool": "write_file", "args": {"path": "r.txt", "content": "done"}}',
+      "DONE: wrote r.txt after asking.",
+    ];
+    let n = 0;
+    const scripted: ChatProvider = { name: "t", chat: async () => replies[n++] };
+    const asks: string[] = [];
+    const outcome = await runToolLoop({
+      provider: scripted,
+      tools: [writeTool],
+      system: "s",
+      task: "t",
+      cwd,
+      askPeer: async (q) => {
+        asks.push(q);
+        return "Use tables.";
+      },
+    });
+    expect(asks).toEqual(["Should the report use tables or prose?"]);
+    expect(outcome.status).toBe("done"); // the loop survived the question
+    expect(outcome.text).toBe("wrote r.txt after asking.");
+    const askEntry = outcome.transcript.find((t) => t.startsWith("ASK"));
+    expect(askEntry).toContain("Use tables.");
+    // The answer was fed back into the conversation.
+    expect(outcome.messages.some((m) => m.role === "user" && m.content.includes("The Vision Holder answered")));
+  });
+
+  it("native mode: ask_vision tool call is routed to the peer", async () => {
+    const provider = new NativeProvider([
+      {
+        content: null,
+        toolCalls: [{ id: "c1", name: "ask_vision", args: { question: "What format?" } }],
+      },
+      { content: "DONE: all clear" }],
+    );
+    const outcome = await runToolLoop({
+      provider,
+      tools: [writeTool],
+      system: "s",
+      task: "t",
+      cwd,
+      askPeer: async (q) => `Peer says: ${q}`,
+    });
+    expect(outcome.status).toBe("done");
+    const toolMsg = outcome.messages.find((m) => m.role === "tool") as Extract<ChatMessage, { role: "tool" }>;
+    expect(toolMsg.content).toBe("Peer says: What format?");
+  });
+
+  it("without askPeer, ASK falls through to unknown -> nudge path", async () => {
+    let calls = 0;
+    const scripted: ChatProvider = {
+      name: "t",
+      chat: async () => (calls++ === 0 ? "ASK: hello?" : "DONE: fine"),
+    };
+    const outcome = await runToolLoop({ provider: scripted, tools: [writeTool], system: "s", task: "t", cwd });
+    expect(outcome.status).toBe("done");
+    expect(calls).toBe(2); // ASK nudged once, then DONE
+  });
+});

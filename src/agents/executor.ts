@@ -46,6 +46,7 @@ export class ExecutorAgent {
     harness?: Harness,
     private readonly transcript?: Transcript,
     private readonly onNotice?: (message: string) => void,
+    private readonly askPeer?: (question: string) => Promise<string>,
   ) {
     this.harness = harness;
     this.usesHarness = domain === "software" && harness !== undefined;
@@ -99,6 +100,7 @@ export class ExecutorAgent {
       task: "",
       cwd: this.cwd,
       onEvent: this.onToolEvent,
+      askPeer: this.askPeer,
       messages: [
         ...this.lastOutcome.messages,
         { role: "user", content: `The Vision Holder answered your question: ${answer}\nContinue.` },
@@ -225,6 +227,7 @@ export class ExecutorAgent {
       task: executePrompt(plan, intent),
       cwd: this.cwd,
       onEvent: this.onToolEvent,
+      askPeer: this.askPeer,
       messages: this.lastOutcome?.messages,
     });
     this.lastOutcome = outcome;

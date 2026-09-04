@@ -52,16 +52,30 @@ export function renderToolDocs(tools: Tool[]): string {
     .join("\n");
 }
 
-function toChatTools(tools: Tool[]): ChatToolDef[] {
-  return tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
+const ASK_VISION_TOOL: ChatToolDef = {
+  name: "ask_vision",
+  description:
+    "Ask the Vision Holder (the agent who owns the intent) a clarifying question directly. " +
+    "Their answer arrives as this tool's result; use it whenever the intent or task is ambiguous mid-work.",
+  parameters: {
+    type: "object",
+    properties: { question: { type: "string", description: "The specific question about the intent or task" } },
+    required: ["question"],
+  },
+};
+
+function toChatTools(tools: Tool[], withPeer: boolean): ChatToolDef[] {
+  const defs = tools.map((t) => ({ name: t.name, description: t.description, parameters: t.parameters }));
+  return withPeer ? [ASK_VISION_TOOL, ...defs] : defs;
 }
 
 /** Protocol block appended to the caller's system prompt, per mode. */
 function nativeProtocolBlock(): string {
   return [
     "You call tools directly: the runtime offers each tool natively; call one per step and you will receive its result.",
+    'The ask_vision tool lets you ask the Vision Holder a question directly mid-work; the answer arrives as the tool result and you keep working.',
     "Reply with exactly one directive on the first line when you are not calling a tool:",
-    "  QUESTION: <question for the Vision Holder>   — when the intent is ambiguous; then stop",
+    "  QUESTION: <question for the Vision Holder>   — hands the whole task back; prefer ask_vision",
     "  DONE: <summary of what was done, findings, blockers>   — when finished",
   ].join("\n");
 }
@@ -70,7 +84,8 @@ function textProtocolBlock(): string {
   return [
     "Reply with exactly one directive on the first line:",
     '  ACTION: {"tool": "<name>", "args": {...}}   — call a tool; you will receive RESULT: <output>',
-    "  QUESTION: <question for the Vision Holder>   — when the intent is ambiguous; then stop",
+    "  ASK: <question for the Vision Holder>   — ambiguous about the intent mid-work? Ask directly; the answer arrives immediately and you keep working",
+    "  QUESTION: <question for the Vision Holder>   — hands the whole task back; prefer ASK",
     "  DONE: <summary of what was done, findings, blockers>   — when finished",
   ].join("\n");
 }
@@ -86,6 +101,10 @@ export async function runToolLoop(opts: {
   messages?: ChatMessage[];
   /** Optional sink for transcript events (shared visibility, §2.1). */
   onEvent?: (kind: "tool_call" | "tool_result", text: string) => void;
+  /** Direct peer channel: ask the Vision Holder mid-work and continue with
+   *  the answer in the same working session (v0.2 direct talk). When absent,
+   *  the QUESTION: directive still ends the loop for orchestrator routing. */
+  askPeer?: (question: string) => Promise<string>;
 }): Promise<ToolLoopOutcome> {
   const maxTurns = opts.maxTurns ?? DEFAULT_MAX_TURNS;
   // Native tool calling when the provider supports it AND there are tools.
@@ -112,7 +131,7 @@ export async function runToolLoop(opts: {
     let reply: string;
 
     if (nativeChat) {
-      const result = await nativeChat(messages, { tools: toChatTools(opts.tools) });
+      const result = await nativeChat(messages, { tools: toChatTools(opts.tools, Boolean(opts.askPeer)) });
       if (result.usage) {
         usage.promptTokens += result.usage.promptTokens;
         usage.completionTokens += result.usage.completionTokens;
@@ -123,7 +142,12 @@ export async function runToolLoop(opts: {
         for (const call of result.toolCalls) {
           const callText = `${call.name}(${JSON.stringify(call.args)})`;
           opts.onEvent?.("tool_call", callText);
-          const result2 = await runTool(call.name, call.args, opts.tools, opts.cwd);
+          let result2: string;
+          if (call.name === "ask_vision" && opts.askPeer) {
+            result2 = await opts.askPeer(String(call.args.question ?? ""));
+          } else {
+            result2 = await runTool(call.name, call.args, opts.tools, opts.cwd);
+          }
           opts.onEvent?.("tool_result", result2.slice(0, 2_000));
           transcript.push(`ACTION ${call.name}(${JSON.stringify(call.args)})\n${result2}`);
           messages.push({ role: "tool", toolCallId: call.id, content: result2 });
@@ -148,6 +172,14 @@ export async function runToolLoop(opts: {
       continue;
     }
 
+    if (directive.kind === "ask" && opts.askPeer) {
+      // Direct talk: ask the peer and CONTINUE in this working session.
+      const answer = await opts.askPeer(directive.text);
+      transcript.push(`ASK ${directive.text}\n${answer}`);
+      messages.push({ role: "user", content: `The Vision Holder answered:\n${answer}\nContinue working.` });
+      continue;
+    }
+
     if (directive.kind === "question") {
       return withUsage({ status: "question", text: directive.text, transcript, messages }, usage);
     }
@@ -161,9 +193,9 @@ export async function runToolLoop(opts: {
       messages.push({
         role: "user",
         content: nativeChat
-          ? "Call one of the offered tools to make progress, or reply with exactly one directive on the first line: QUESTION: <question> — or DONE: <summary>."
+          ? "Call one of the offered tools (ask_vision if the intent is unclear) to make progress, or reply with exactly one directive on the first line: QUESTION: <question> — or DONE: <summary>."
           : 'Reply with exactly one directive on the first line: ' +
-            'ACTION: {"tool": "...", "args": {...}} — or QUESTION: <question> — or DONE: <summary>.',
+            'ACTION: {"tool": "...", "args": {...}} — or ASK: <question for the Vision Holder> — or DONE: <summary>.',
       });
       continue;
     }
@@ -220,6 +252,7 @@ function withUsage(
 
 type Directive =
   | { kind: "action"; tool: string; args: Record<string, unknown> }
+  | { kind: "ask"; text: string }
   | { kind: "question"; text: string }
   | { kind: "done"; text: string }
   | { kind: "ready"; text: string }
@@ -236,6 +269,9 @@ export function parseDirective(reply: string): Directive {
   }
   if (firstLine.startsWith("READY:")) {
     return { kind: "ready", text: trimmed.slice(trimmed.indexOf("READY:") + "READY:".length).trim() };
+  }
+  if (firstLine.startsWith("ASK:")) {
+    return { kind: "ask", text: trimmed.slice(trimmed.indexOf("ASK:") + "ASK:".length).trim() };
   }
   if (firstLine.startsWith("QUESTION:")) {
     return { kind: "question", text: trimmed.slice(trimmed.indexOf("QUESTION:") + "QUESTION:".length).trim() };

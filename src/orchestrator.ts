@@ -97,9 +97,30 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
   ]);
 
   const vision = new VisionAgent(visionProvider);
+
+  // Direct peer channel (v0.2): the Executor can ask Vision mid-work and
+  // continue in the same session. The orchestrator stays the referee — it
+  // records both sides (qa.md + transcript) and enforces the Q&A cap; when
+  // the cap is spent the answer says so instead of halting mid-task.
+  let intentForPeer = "";
+  let directQaRounds = 0;
+  const askVision = async (question: string): Promise<string> => {
+    if (++directQaRounds > MAX_QA_ROUNDS) {
+      const note = `Q&A cap (${MAX_QA_ROUNDS}) reached; proceeding with best judgment and noting the assumption is expected.`;
+      await transcript.append("Orchestrator", "system", `Direct Q&A cap reached. ${note}`);
+      return note;
+    }
+    await notes.append("qa.md", executor.name, "Question (direct)", question);
+    await transcript.append("Executor", "question", `[direct] ${question}`);
+    const answer = await vision.answerQuestion(intentForPeer, question);
+    await notes.append("qa.md", vision.name, "Answer (direct)", answer);
+    await transcript.append("Vision", "answer", `[direct] ${answer}`);
+    return answer;
+  };
+
   const executor = new ExecutorAgent(executorProvider, config.domain, cwd, opts.harness, transcript, (message) => {
     ui.system(message);
-  });
+  }, askVision);
   // Software fallback: route its tool loop through the tracked provider too.
   opts.harness?.setProvider?.(executorProvider);
 
@@ -127,6 +148,7 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
   await notes.append("intent.md", vision.name, "Intent", intentDoc.intent);
   await notes.append("intentnotes.md", vision.name, "Intent notes", intentDoc.intentNotes);
   await transcript.append("Vision", "intent", intentDoc.intent);
+  intentForPeer = intentDoc.intent;
   ui.vision("Done. Wrote intent.md and intentnotes.md.");
 
   // Turn-end: intent posted → the Executor is invoked.
@@ -179,7 +201,9 @@ export async function runPairLoop(opts: RunOptions): Promise<LoopResult> {
       }
     }
 
-    // Turn: Executor executes (tool sub-steps never yield the keyboard).
+    // Turn: Executor executes (tool sub-steps never yield the keyboard);
+    // direct peer questions inside the turn draw from a fresh Q&A budget.
+    directQaRounds = 0;
     ui.executor("Executing plan...");
     let outcome = await executor.execute(planDoc.plan, intent);
     let qaRounds = 0;
