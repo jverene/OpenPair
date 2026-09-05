@@ -245,3 +245,64 @@ describe("runToolLoop — direct peer channel (ASK / ask_vision)", () => {
     expect(calls).toBe(2); // ASK nudged once, then DONE
   });
 });
+
+describe("runToolLoop — multiple direct questions before DONE", () => {
+  it("asks are answered strictly in order, each durably recorded, no loss or interleave", async () => {
+    const replies = [
+      "ASK: Question one about the format?",
+      "ASK: Question two about the scope?",
+      "ASK: Question three about the name?",
+      'ACTION: {"tool": "write_file", "args": {"path": "r.txt", "content": "ok"}}',
+      "DONE: finished after three questions.",
+    ];
+    let n = 0;
+    const scripted: ChatProvider = { name: "t", chat: async () => replies[n++] };
+    const asked: string[] = [];
+    const answered: string[] = [];
+    const outcome = await runToolLoop({
+      provider: scripted,
+      tools: [writeTool],
+      system: "s",
+      task: "t",
+      cwd,
+      askPeer: async (q) => {
+        asked.push(q);
+        const a = `answer-${asked.length}`;
+        answered.push(a);
+        return a;
+      },
+    });
+    // Strict FIFO: the peer saw the questions in exactly the order asked.
+    expect(asked).toEqual(["Question one about the format?", "Question two about the scope?", "Question three about the name?"]);
+    expect(answered).toEqual(["answer-1", "answer-2", "answer-3"]);
+    expect(outcome.status).toBe("done");
+    // Every question/answer pair is in the transcript, in order.
+    const asks = outcome.transcript.filter((t) => t.startsWith("ASK"));
+    expect(asks).toHaveLength(3);
+    expect(asks[0]).toContain("answer-1");
+    expect(asks[2]).toContain("answer-3");
+    // And every answer reached the executor's conversation, in order.
+    const answers = outcome.messages.filter((m) => m.role === "user" && m.content.includes("The Vision Holder answered"));
+    expect(answers).toHaveLength(3);
+    expect(answers[0].content).toContain("answer-1");
+    expect(answers[2].content).toContain("answer-3");
+  });
+
+  it("sixth question gets the cap notice instead of an answer, loop still finishes", async () => {
+    let n = 0;
+    const scripted: ChatProvider = {
+      name: "t",
+      chat: async () => (n < 6 ? `ASK: question ${++n}?` : "DONE: gave up asking, proceeded."),
+    };
+    const outcome = await runToolLoop({
+      provider: scripted,
+      tools: [writeTool],
+      system: "s",
+      task: "t",
+      cwd,
+      askPeer: async (q) => (q === "question 6?" ? "Q&A cap (5) reached; proceeding with best judgment is expected." : `answer to ${q}`),
+    });
+    expect(outcome.status).toBe("done");
+    expect(outcome.messages.some((m) => m.role === "user" && m.content.includes("Q&A cap (5) reached"))).toBe(true);
+  });
+});
