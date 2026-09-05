@@ -65,6 +65,29 @@ The default domain is **research** — the friendliest first run. Provider and n
 
 In every domain the Executor's working rules apply: least code that fully works, stdlib over dependencies, build only what the intent asks, minimal diffs, tombstones for rejected alternatives — and **findings must be materialized to a file**, not left in the transcript.
 
+## Using OpenPair inside Claude Code
+
+Three ways, like ECC/ruflo:
+
+1. **Claude Code as the Executor** (deepest integration): if the `claude` CLI is installed, the software domain uses it headlessly to build — Vision plans and reviews, Claude Code writes the code. Harness selection is automatic (`claude` > `opencode` > basic tools) or explicit:
+
+   ```json
+   // ~/.openpair/config.json
+   { "provider": "custom", "baseURL": "…", "model": "…", "domain": "software", "harness": "claude" }
+   ```
+
+   The harness's coding runs on your Claude auth; the pair's model calls stay on your provider key. Preflight failure falls back — never halts.
+
+2. **MCP server** (Claude Code calls OpenPair as a tool):
+
+   ```bash
+   claude mcp add openpair -- npx @jverene/openpair mcp
+   ```
+
+   Exposes `pair_run` (run the full loop in the current working directory; returns status, verdict, artifact list) and `pair_preflight` (is OpenPair configured?).
+
+3. **Slash command plugin**: copy `claude-plugin/commands/openpair.md` into `~/.claude/commands/` (or add this repo as a plugin marketplace) — then `/openpair "build X"` inside Claude Code runs the loop and summarizes the verified results.
+
 ## Cost and spend visibility
 
 Every LLM call is appended as one JSON line — `{ts, model, prompt_tokens, completion_tokens, prompt_cache_hit_tokens, prompt_cache_miss_tokens}` — to `.pair/usage.jsonl`, or anywhere you like via `OPENPAIR_USAGE_LOG`. Point it at an absolute path per run for clean per-run cost accounting. DeepSeek cache-hit fields are captured when the backend reports them.

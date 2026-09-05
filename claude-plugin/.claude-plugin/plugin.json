@@ -1,0 +1,7 @@
+{
+  "name": "openpair",
+  "description": "Two-agent pair programming (Vision + Executor) with verified, manifest-grounded review — slash command + MCP server for Claude Code.",
+  "version": "0.2.0",
+  "author": "jverene",
+  "homepage": "https://github.com/jverene/OpenPair"
+}
