@@ -35,7 +35,17 @@ program
   .description("Two agents. One vision. One executor. Every decision documented.")
   .argument("[goal]", "what the pair should build, research, or write")
   .option("--mock", "run the full loop against a mock provider (no API keys needed)")
-  .option("--reconfigure", "re-run the setup wizard")
+  .option("--reconfigure", "re-run the setup wizard");
+
+program
+  .command("mcp")
+  .description("start the OpenPair MCP server (stdio) for Claude Code and other MCP clients")
+  .action(async () => {
+    const { startMcpServer } = await import("./mcp.js");
+    await startMcpServer();
+  });
+
+program
   .action(async (goal: string | undefined, opts: { mock?: boolean; reconfigure?: boolean }) => {
     const ui = new UI();
     const cwd = process.cwd();
