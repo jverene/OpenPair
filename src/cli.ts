@@ -53,7 +53,9 @@ program
     await transcript.init();
 
     if (!goal) {
-      program.help();
+      // Bare `npx @jverene/openpair`: the ECC-style setup flow.
+      const { runSetup } = await import("./setup.js");
+      await runSetup();
       return;
     }
 

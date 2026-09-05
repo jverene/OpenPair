@@ -15,8 +15,10 @@
   "bin": {
     "openpair": "dist/cli.js"
   },
+  "prepare": "npm run build",
   "files": [
-    "dist"
+    "dist",
+    "claude-plugin"
   ],
   "engines": {
     "node": ">=18"
