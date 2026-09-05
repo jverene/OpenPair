@@ -11,7 +11,7 @@
  * document with --output-format json, but we also accept a JSONL event
  * stream (stream-json) and plain text, because versions differ.
  */
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileOptionsWithStringEncoding } from "node:child_process";
 import type { Harness, HarnessResult } from "./types.js";
 
 export const CLAUDE_TASK_TIMEOUT_MS = 600_000;
@@ -36,7 +36,15 @@ export const defaultClaudeRunner: ClaudeRunner = (args, opts) =>
     execFile(
       "claude",
       args,
-      { cwd: opts.cwd, timeout: opts.timeoutMs, maxBuffer: 32 * 1024 * 1024 },
+      {
+        cwd: opts.cwd,
+        timeout: opts.timeoutMs,
+        maxBuffer: 32 * 1024 * 1024,
+        // Claude Code probes stdin when it is a pipe and complains about
+        // "no stdin data" — give it nothing to wait on. (Runtime-supported;
+        // the execFile type overload doesn't model stdio, hence the cast.)
+        stdio: ["ignore", "pipe", "pipe"],
+      } as ExecFileOptionsWithStringEncoding,
       (error, stdout, stderr) => {
         const anyError = error as (Error & { code?: number | string }) | null;
         if (anyError && typeof anyError.code === "string") {
