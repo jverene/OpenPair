@@ -49,8 +49,17 @@ export const API_KEY_ENV: Partial<Record<ProviderName, string>> = {
   custom: "OPENAI_API_KEY",
 };
 
+/**
+ * Config location. Override with OPENPAIR_HOME when you must isolate
+ * OpenPair's config without touching HOME — e.g. in tests or when sibling
+ * tools (Claude Code) keep their own state under the real HOME.
+ */
+export function openpairHome(): string {
+  return process.env.OPENPAIR_HOME ?? join(homedir(), ".openpair");
+}
+
 export function configPath(): string {
-  return join(homedir(), ".openpair", "config.json");
+  return join(openpairHome(), "config.json");
 }
 
 export async function loadConfig(): Promise<Config | null> {
@@ -68,7 +77,7 @@ export async function loadConfig(): Promise<Config | null> {
  * Returns a warning when a pre-existing file had lax permissions.
  */
 export async function saveConfig(config: Config): Promise<string | undefined> {
-  await mkdir(join(homedir(), ".openpair"), { recursive: true });
+  await mkdir(openpairHome(), { recursive: true });
   let warning: string | undefined;
   try {
     const { stat } = await import("node:fs/promises");
