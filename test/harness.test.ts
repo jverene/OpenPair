@@ -73,18 +73,36 @@ describe("OpenCodeHarness", () => {
 describe("createHarness", () => {
   const provider = new MockProvider(() => "DONE: ok");
 
-  it("falls back with a notice when opencode is not installed", async () => {
+  it("falls back with a notice when no harness binary is present (auto)", async () => {
     const run = runnerWith(() => ({ code: 127, stdout: "", stderr: "ENOENT" }));
-    const { harness, notice } = await createHarness({ config, provider, cwd: "/tmp", runner: run });
+    const claudeRun = async () => ({ code: 127, stdout: "", stderr: "ENOENT" });
+    const { harness, notice } = await createHarness({
+      config, provider, cwd: "/tmp", runner: run,
+      claudeRunner: claudeRun as Parameters<typeof createHarness>[0]["claudeRunner"],
+    });
     expect(harness).toBeInstanceOf(FallbackHarness);
     expect(notice).toBe(FALLBACK_NOTICE);
   });
 
-  it("uses OpenCode when the binary is present", async () => {
+  it("uses OpenCode when configured explicitly and present", async () => {
     const run = runnerWith(() => ({ code: 0, stdout: "1.0.0", stderr: "" }));
-    const { harness, notice } = await createHarness({ config, provider, cwd: "/tmp", runner: run });
+    const { harness, notice } = await createHarness({
+      config: { ...config, harness: "opencode" }, provider, cwd: "/tmp", runner: run,
+    });
     expect(harness).toBeInstanceOf(OpenCodeHarness);
     expect(notice).toBeUndefined();
+  });
+
+  it("auto prefers Claude Code when its binary is present (opencode absent)", async () => {
+    const run = runnerWith(() => ({ code: 127, stdout: "", stderr: "ENOENT" }));
+    const claudeRun = async (args: string[]) =>
+      args[0] === "--version" ? { code: 0, stdout: "2.1.116", stderr: "" } : { code: 0, stdout: "{}", stderr: "" };
+    const { ClaudeCodeHarness } = await import("../src/harness/claude.js");
+    const { harness } = await createHarness({
+      config, provider, cwd: "/tmp", runner: run,
+      claudeRunner: claudeRun as Parameters<typeof createHarness>[0]["claudeRunner"],
+    });
+    expect(harness).toBeInstanceOf(ClaudeCodeHarness);
   });
 
   it("both harnesses share the execute interface", async () => {

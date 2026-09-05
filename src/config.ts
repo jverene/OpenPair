@@ -15,6 +15,8 @@ export type ProviderName = (typeof PROVIDERS)[number];
 export const DOMAINS = ["software", "research", "writing"] as const;
 export type Domain = (typeof DOMAINS)[number];
 
+export type HarnessChoice = "auto" | "claude" | "opencode" | "fallback";
+
 export interface Config {
   provider: ProviderName;
   domain: Domain;
@@ -23,6 +25,9 @@ export interface Config {
   baseURL?: string;
   /** May be omitted when the key comes from the environment. */
   apiKey?: string;
+  /** Software domain only: which execution harness. Default "auto"
+   *  (Claude Code if installed, else OpenCode, else basic tools). */
+  harness?: HarnessChoice;
 }
 
 /** Sensible provider-level defaults; the wizard lets the user override. */
