@@ -28,3 +28,9 @@ v0.1 proves the core thesis: two agents plus mandatory documentation produce bet
 - Direct agent messaging vs notes-only: **notes-only, strictly** — documentation is the point.
 - Default LLM per domain: **provider-level defaults suggested in the wizard, user-overridable** (e.g. a Claude default, a GPT default, a Llama default for Ollama). Not hardcoded per domain.
 - Tombstones for rejected alternatives in plannotes.md: **yes** — rejected option, reason, rejecting agent.
+
+## [2026-08-17T05:39:52.294Z] Intent notes
+
+_Agent: Vision_
+
+Mock run: no real LLM, no real artifacts. Scope is the loop mechanics only.

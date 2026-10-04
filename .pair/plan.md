@@ -36,3 +36,9 @@ TypeScript + Node.js (>= 18), ESM, `npx`-runnable via a `bin` entry. Provider la
 ### Verification
 
 `npm run typecheck` clean; `npm test` green; `node dist/cli.js --help` and `--mock` dry-run smoke.
+
+## [2026-08-17T05:39:52.300Z] Plan
+
+_Agent: Executor_
+
+1. Acknowledge intent. 2. Report mock completion.

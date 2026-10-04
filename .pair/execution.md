@@ -44,3 +44,15 @@ _Agent: Executor. One entry per milestone, appended as work proceeds._
 - `npm publish` of `openpair` was rejected by the registry (E403): "Package name too similar to existing package openai" — typo-squatting protection, not a name-availability issue (`npm view openpair` had returned 404).
 - Resolution (npm's own suggestion): renamed to the scoped package `@jverene/openpair`, published with `--access=public`. Bin name stays `openpair`; usage becomes `npx @jverene/openpair`.
 - Updated `package.json` name, README install line, and the PRD's first-run snippet to match. Tombstone-worthy lesson: a 404 on `npm view` does not mean a name is publishable.
+
+## [2026-08-17T05:39:52.304Z] Execution
+
+_Agent: Executor_
+
+Mock execution complete. No artifacts produced (mock mode). Handoff mechanics verified.
+
+### Transcript
+
+```
+(mock harness) would run: 1. Acknowledge intent. 2. Report mock completion.
+```

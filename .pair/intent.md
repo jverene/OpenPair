@@ -27,3 +27,9 @@ Implement OpenPair v0.1 exactly as specified in `V01PRD.md` (as amended with "Ph
 ## Context
 
 The human supplied the PRD, directed the reactive-handoff and OpenCode-harness revisions, and approved the implementation plan after two review rounds. Their explicit emphases are incorporated: event-driven dispatch after every `notes.write()`, mandatory preflight, hash gating in `notes.ts`, separate plan/execute LLM calls for the Executor, and per-milestone `execution.md` entries.
+
+## [2026-08-17T05:39:52.287Z] Intent
+
+_Agent: Vision_
+
+Demonstrate the OpenPair loop end to end in mock mode.

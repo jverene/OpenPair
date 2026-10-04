@@ -50,3 +50,9 @@ Planning is a cheap, tool-less call; execution is the expensive, tool/harness-he
 ## [2026-08-16T15:40:00Z] Tombstone added during execution
 
 - **Rejected: provider-native tool calling (OpenAI tools / Anthropic tool_use) for the Executor's tool loop.** Reason: native tool-result plumbing differs per provider (tool_call_ids, tool-result message roles) and would have leaked provider specifics into the agent layer; Ollama tool support is also model-dependent. Chosen instead: a prompt-level JSON directive protocol (`ACTION:` / `QUESTION:` / `DONE:` / `READY:`) over a text-only ChatProvider interface — one code path across all four provider options, trivially testable with scripted mocks. Rejected by: Executor, mid-build, when the abstraction started to sprawl. Risk accepted: weaker models may malform directives; mitigated by protocol nudges (2) and the turn cap.
+
+## [2026-08-17T05:39:52.301Z] Plan notes
+
+_Agent: Executor_
+
+Mock mode performs no real work; rejected doing anything fancier because the point is exercising the handoff, not the LLM.
