@@ -4,6 +4,44 @@ Two agents. One has the vision. One executes. They review each other's work — 
 
 OpenPair is pair programming plus startup speed plus the documentation hygiene of a mature engineering org. Not a swarm of agents playing make-believe software company. Not a single agent coding in a black box. Two agents, one workstation, and a paper trail.
 
+## Add OpenPair to your coding CLI
+
+The fastest way to use OpenPair is as an MCP server inside the CLI you already vibe in. One registration and your agent gains:
+
+- **An independent reviewer.** `pair_review` returns an APPROVE/REVISE verdict on whatever is in the working directory right now — the work you or your coding agent just did. Deliverables are verified against an artifact manifest of what actually exists on disk (a claimed-but-missing file is an automatic REVISE, not a judgment call), and in a git repository the uncommitted diff is reviewed too. One model call — seconds, not minutes. The full review is appended to `.pair/review.md`.
+- **A reviewed pair for whole tasks.** `pair_run` delegates a self-contained goal: a Vision agent writes the intent, an Executor builds it, and the result is reviewed against the manifest — phantom deliverables fail automatically. You get back the status, the review verdict, and the artifact list.
+- **A paper trail.** Every run and review lands in `.pair/` — six months from now, `plannotes.md` answers "why this database?" and `review.md` answers "did anyone check this?"
+
+```bash
+npx @jverene/openpair        # setup wizard: configures OpenPair and registers
+                             # the MCP server into every supported CLI it detects
+```
+
+Auto-detected: Claude Code, Cursor, Codex CLI, Gemini CLI, ZCode. Prefer manual?
+
+```bash
+claude mcp add --scope user openpair -- npx @jverene/openpair mcp   # Claude Code
+```
+
+```jsonc
+// Cursor ~/.cursor/mcp.json  ·  Gemini CLI ~/.gemini/settings.json
+{ "mcpServers": { "openpair": { "command": "npx", "args": ["@jverene/openpair", "mcp"] } } }
+```
+
+```toml
+# Codex CLI ~/.codex/config.toml
+[mcp_servers.openpair]
+command = "npx"
+args = ["@jverene/openpair", "mcp"]
+```
+
+```jsonc
+// ZCode ~/.zcode/cli/config.json
+{ "mcp": { "servers": { "openpair": { "command": "npx", "args": ["@jverene/openpair", "mcp"] } } } }
+```
+
+`pair_run` can take several minutes; in Claude Code raise the tool timeout if needed (`MCP_TOOL_TIMEOUT=600000 claude`). `pair_review` is the fast path.
+
 ## The two agents
 
 - **Vision Holder (Agent A)** owns the *why*. Writes the goal, constraints, and definition of done. Reviews the Executor's work against the original intent — "does this actually solve the problem?" Never writes code.
@@ -78,15 +116,15 @@ Three ways, like ECC/ruflo:
 
    The harness's coding runs on your Claude auth; the pair's model calls stay on your provider key. Preflight failure falls back — never halts.
 
-2. **MCP server** (Claude Code calls OpenPair as a tool):
+2. **MCP server** (Claude Code calls OpenPair as a tool — what `openpair setup` registers automatically):
 
    ```bash
    claude mcp add openpair -- npx @jverene/openpair mcp
    ```
 
-   Exposes `pair_run` (run the full loop in the current working directory; returns status, verdict, artifact list) and `pair_preflight` (is OpenPair configured?).
+   Exposes `pair_review` (independent APPROVE/REVISE verdict on the current working directory, grounded in the artifact manifest), `pair_run` (delegate the full loop; returns status, verdict, artifact list), and `pair_preflight` (is OpenPair configured?).
 
-3. **Slash command plugin**: copy `claude-plugin/commands/openpair.md` into `~/.claude/commands/` (or add this repo as a plugin marketplace) — then `/openpair "build X"` inside Claude Code runs the loop and summarizes the verified results.
+3. **Slash command plugin**: copy `claude-plugin/commands/openpair.md` into `~/.claude/commands/` (or add this repo as a plugin marketplace: `claude plugin marketplace add jverene/OpenPair`) — then `/openpair "build X"` delegates to `pair_run` and `/openpair review "X"` gets a verdict via `pair_review`.
 
 ## Cost and spend visibility
 
