@@ -1,0 +1,14 @@
+{
+  "name": "openpair",
+  "owner": {
+    "name": "jverene"
+  },
+  "plugins": [
+    {
+      "name": "openpair",
+      "source": "./claude-plugin",
+      "description": "Two-agent pair programming (Vision + Executor) — pair_review/pair_run MCP tools + /openpair slash command for Claude Code.",
+      "version": "0.2.0"
+    }
+  ]
+}
