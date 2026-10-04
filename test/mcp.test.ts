@@ -2,11 +2,11 @@
  * mcp.test.ts — the pairRun tool handler: happy path against a scripted
  * provider, artifact reporting, and the unconfigured-config error.
  */
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { pairRun } from "../src/mcp.js";
+import { pairRun, preflight } from "../src/mcp.js";
 import { MockProvider, type MockScript } from "../src/providers/mock.js";
 import type { Config } from "../src/config.js";
 
@@ -66,6 +66,44 @@ describe("pairRun (MCP tool handler)", () => {
       await expect(pairRun({ goal: "g", cwd })).rejects.toThrow(/not configured/i);
     } finally {
       process.env.HOME = realHome;
+      await rm(fakeHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("preflight (pair_preflight engine)", () => {
+  it("reports NOT CONFIGURED when no config exists", async () => {
+    const fakeHome = await mkdtemp(join(tmpdir(), "empty-home-pf-"));
+    const prev = process.env.OPENPAIR_HOME;
+    process.env.OPENPAIR_HOME = join(fakeHome, ".openpair");
+    try {
+      await expect(preflight()).resolves.toContain("NOT CONFIGURED");
+    } finally {
+      if (prev === undefined) delete process.env.OPENPAIR_HOME;
+      else process.env.OPENPAIR_HOME = prev;
+      await rm(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it("reports provider/model/domain/key for a configured setup", async () => {
+    const fakeHome = await mkdtemp(join(tmpdir(), "cfg-home-pf-"));
+    const prev = process.env.OPENPAIR_HOME;
+    process.env.OPENPAIR_HOME = join(fakeHome, ".openpair");
+    try {
+      await mkdir(process.env.OPENPAIR_HOME, { recursive: true });
+      await writeFile(
+        join(process.env.OPENPAIR_HOME, "config.json"),
+        JSON.stringify({ provider: "openai", domain: "writing", model: "gpt-4o", apiKey: "sk-test" }),
+        "utf8",
+      );
+      const text = await preflight();
+      expect(text).toContain("provider=openai");
+      expect(text).toContain("model=gpt-4o");
+      expect(text).toContain("domain=writing");
+      expect(text).toContain("key=present");
+    } finally {
+      if (prev === undefined) delete process.env.OPENPAIR_HOME;
+      else process.env.OPENPAIR_HOME = prev;
       await rm(fakeHome, { recursive: true, force: true });
     }
   });
