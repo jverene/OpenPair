@@ -172,6 +172,48 @@ Judge scope discipline on the same axis as completeness: REVISE when the executi
 Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so the Executor can address it.`;
 }
 
+/**
+ * Standalone review (MCP pair_review): pass a verdict on work the pair did
+ * not supervise. There is no execution record or transcript — the ground
+ * truth is the artifact manifest and, when present, the git state.
+ */
+export function standaloneReviewPrompt(input: {
+  goal: string;
+  focus?: string;
+  intent?: string;
+  manifest: string;
+  gitStatus?: string;
+  gitDiff?: string;
+}): string {
+  const intentBlock = input.intent?.trim()
+    ? `\n<existing-intent>\n${input.intent.trim()}\n</existing-intent>\n`
+    : "\n<existing-intent>(none — the goal below is the only statement of intent)</existing-intent>\n";
+  const gitBlock = input.gitStatus
+    ? `\n<git-status>\n${input.gitStatus}\n</git-status>\n\n<git-diff>\n${input.gitDiff ?? "(empty diff)"}\n</git-diff>\n`
+    : "\n(not a git repository — judge entirely by the artifact manifest)\n";
+  const focusBlock = input.focus?.trim()
+    ? `\nPay particular attention to: ${input.focus.trim()}\n`
+    : "";
+
+  return `Review the CURRENT STATE of a working directory against a stated goal. You did not supervise this work and there is no execution record — the ground truth is the artifact manifest (every file actually on disk) and the git state below. This is an intent review: does what exists actually accomplish the goal?
+
+${currentDateLine()}
+
+Verify, don't trust: every deliverable the goal implies MUST appear in the artifact manifest. Work that exists only in a commit message, a comment, or someone's summary is a phantom claim — reply REVISE and say exactly which expected deliverable is missing from the manifest. When a git diff is provided, review the changes it shows as the primary evidence of what was done.
+
+<goal>
+${input.goal}
+</goal>
+${intentBlock}${gitBlock}
+<artifact-manifest>
+${input.manifest}
+</artifact-manifest>
+${focusBlock}
+Judge scope discipline on the same axis as completeness: REVISE when the work did MORE than the goal asked (unrequested files, features, or dependencies — bloat) exactly as you would when it did less. Judge quality only through the goal: things the goal never asked for are not defects.
+
+Reply with the verdict on the first line — exactly APPROVE or REVISE — followed by your reasoning. If REVISE, list each gap concretely so it can be fixed.`;
+}
+
 export function answerPrompt(intent: string, question: string): string {
   return `The Executor is blocked on a question about the intent. Answer decisively and briefly.
 

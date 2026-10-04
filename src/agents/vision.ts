@@ -69,12 +69,18 @@ export class VisionAgent {
         { role: "user", content: reviewPrompt(intent, plan, execution, transcriptTail) },
       ])
     ).trim();
-
-    const firstLine = (reply.split("\n", 1)[0] ?? "").trim().toUpperCase();
-    if (firstLine.startsWith("APPROVE")) return { decision: "APPROVE", body: reply };
-    // Unparseable verdicts are treated as REVISE (conservative; see plannotes.md).
-    return { decision: "REVISE", body: reply };
+    return parseVerdict(reply);
   }
+}
+
+/**
+ * First line must be APPROVE (REVISE otherwise). Unparseable verdicts are
+ * treated as REVISE — conservative by design (see plannotes.md).
+ */
+export function parseVerdict(reply: string): Verdict {
+  const firstLine = (reply.split("\n", 1)[0] ?? "").trim().toUpperCase();
+  if (firstLine.startsWith("APPROVE")) return { decision: "APPROVE", body: reply };
+  return { decision: "REVISE", body: reply };
 }
 
 /** Split a "INTENT: … INTENT NOTES: …" reply into its two documents. */

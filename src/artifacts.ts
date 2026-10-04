@@ -40,12 +40,16 @@ export async function buildManifest(cwd: string): Promise<ManifestEntry[]> {
   return entries.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** Render the manifest as the markdown block appended to execution.md. */
-export async function renderManifest(cwd: string): Promise<string> {
-  const entries = await buildManifest(cwd);
+/** Render already-built manifest entries as the markdown block given to reviewers. */
+export function renderEntries(entries: ManifestEntry[]): string {
   if (entries.length === 0) {
     return "Artifact manifest (working directory; .pair/, node_modules, .git excluded by design — these notes live outside the manifest): EMPTY — no files were produced.";
   }
   const lines = entries.map((e) => `- ${e.path} — ${e.bytes} bytes, modified ${e.modified}`);
   return `Artifact manifest (working directory; .pair/, node_modules, .git excluded by design — these notes live outside the manifest):\n${lines.join("\n")}`;
+}
+
+/** Render the manifest as the markdown block appended to execution.md. */
+export async function renderManifest(cwd: string): Promise<string> {
+  return renderEntries(await buildManifest(cwd));
 }
